@@ -1,0 +1,54 @@
+{
+  "google": {
+    "enabled": true,
+    "maxCallsPerRun": 50,
+    "maxCallsPerMonth": 999,
+    "costPer1000": 32,
+    "freeCallsPerMonth": 5000,
+    "skuNote": "Text Search Pro (name, address, place ID only). Price and free allowance UNCONFIRMED - check Google's pricing page.",
+    "pageSize": 20,
+    "maxSplitDepth": 2
+  },
+  "overture": {
+    "enabled": true,
+    "release": "latest",
+    "bucketUrl": "https://overturemaps-us-west-2.s3.amazonaws.com"
+  },
+  "nppes": {
+    "enabled": true,
+    "apiUrl": "https://npiregistry.cms.hhs.gov/api/",
+    "concurrency": 3
+  },
+  "cms": {
+    "enabled": true,
+    "homeHealthDatasetId": "6jpm-sxkc",
+    "metastoreUrl": "https://data.cms.gov/provider-data/api/1/metastore/schemas/dataset/items/",
+    "catalogUrl": "https://data.cms.gov/data.json",
+    "ownersDatasetTitle": "Home Health Agency All Owners",
+    "ownersCsvUrl": "",
+    "cacheDays": 30
+  },
+  "geo": {
+    "zctaGazetteerUrl": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_zcta_national.zip",
+    "placeGazetteerUrl": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2024_Gazetteer/2024_Gaz_place_national.zip"
+  },
+  "crawler": {
+    "enabled": true,
+    "maxPagesPerSite": 5,
+    "concurrency": 4,
+    "timeoutMs": 15000,
+    "delayBetweenPagesMs": 500,
+    "userAgent": "RapidRadarBot/0.1 (business contact research; respects robots.txt)",
+    "cacheDays": 30
+  },
+  "email": {
+    "mxCheck": true,
+    "guessForNamedPeople": true
+  },
+  "paidSources": {
+    "google": { "enabled": true },
+    "serper": { "enabled": false },
+    "emailVerifier": { "enabled": false },
+    "emailFinder": { "enabled": false }
+  }
+}
