@@ -7,7 +7,7 @@ import { mapLimit } from './core/http.js'
 import { toCsv } from './core/csv.js'
 import type { RunContext, SourceRecord } from './core/types.js'
 import { resolveArea } from './geo/area.js'
-import { resolveNiche } from './niches.js'
+import { resolveNiche, nicheMismatch } from './niches.js'
 import { googleProvider, googleCounter, googleListPrice } from './providers/googlePlaces.js'
 import { overtureProvider } from './providers/overture.js'
 import { nppesProvider } from './providers/nppes.js'
@@ -81,12 +81,22 @@ async function main() {
   const clusters = keep.map((i) => all[i])
   log(`Matched ${records.length} source records into ${clusters.length} businesses`)
 
+  // Keep only businesses that are actually in the niche. The rest go to the review file with the reason.
   const ledger = new Ledger()
   const leads: Lead[] = clusters.map((c) => buildLead(c, niche))
   leads.forEach((l) => (l.lead_id = ledger.idFor(ledgerKeys(l))))
   const leadByCluster = new Map(keep.map((ci, li) => [ci, leads[li]]))
   clusters.forEach((c, i) => (leads[i].possibleDuplicateOf = c.possibleDuplicates.map((j) => leadByCluster.get(j)?.lead_id).filter((x): x is string => !!x)))
   ledger.save()
+  for (const l of leads) {
+    const reason = nicheMismatch(niche, {
+      names: [...new Set(l.records.flatMap((r) => [r.name, ...(r.altNames ?? [])]))],
+      government: l.records.some((r) => ['nppes', 'cms_hha', 'cms_owners'].includes(r.source)),
+      brand: !!l.brand,
+      category: l.records.some((r) => r.source === 'overture' && r.categories?.some((c) => niche.overtureTaxonomies.includes(c))),
+    })
+    if (reason) l.excluded ??= reason
+  }
 
   // Website crawl, in batches, cached per site so a re-run picks up where it left off.
   const toCrawl = leads.filter((l) => !l.excluded && l.fields.website).slice(0, a['max-sites'] ? Number(a['max-sites']) : undefined)
