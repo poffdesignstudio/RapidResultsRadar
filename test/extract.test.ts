@@ -28,6 +28,8 @@ test('name check rejects business phrases', () => {
   assert.ok(!looksLikePersonName('Home Care Services'))
   assert.ok(!looksLikePersonName('Contact Us'))
   assert.ok(!looksLikePersonName('Charlotte'))
+  assert.ok(!looksLikePersonName('Eastern Idaho'))
+  assert.ok(!looksLikePersonName('North Carolina'))
 })
 
 test('decodes Cloudflare-protected email', () => {

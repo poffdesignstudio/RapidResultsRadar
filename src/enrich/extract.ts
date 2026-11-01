@@ -35,7 +35,11 @@ const NOT_NAME = new Set(
     'office main street road suite welcome client clients family families nursing nurse private duty companion personal ' +
     'director owner founder president manager administrator executive chief officer operations hr human resources care giver caregiver ' +
     'read more learn view all call today email phone fax hours monday friday saturday sunday new now hiring apply join business ' +
-    'franchise independently owned operated location locations area areas serving quality compassionate trusted').split(' '),
+    'franchise independently owned operated location locations area areas serving quality compassionate trusted ' +
+    'eastern western northern southern central greater metro region regional county valley lake mountain ' +
+    'alabama alaska arizona arkansas california colorado connecticut delaware florida georgia hawaii idaho illinois indiana iowa kansas ' +
+    'kentucky louisiana maine maryland massachusetts michigan minnesota mississippi missouri montana nebraska nevada hampshire jersey ' +
+    'mexico york dakota ohio oklahoma oregon pennsylvania rhode tennessee texas utah vermont virginia washington wisconsin wyoming').split(' '),
 )
 
 export function looksLikePersonName(s: string): boolean {
@@ -124,7 +128,9 @@ export function extractPage(html: string, step: string): PageFindings {
 }
 
 function person(name: string, title: string | undefined, step: string, confidence: Confidence): Person {
-  const clean = name.replace(/\s+/g, ' ').trim()
+  let clean = name.replace(/\s+/g, ' ').trim()
+  if (clean === clean.toUpperCase()) clean = titleCase(clean) // "MELISSA HENDERSON" -> "Melissa Henderson"
+  title = title?.replace(/[:\s]+$/, '')
   const { first, last } = splitName(clean)
   return { name: clean, first, last, title: title?.replace(/\s+/g, ' ').trim(), step, confidence }
 }

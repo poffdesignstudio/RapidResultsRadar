@@ -38,7 +38,7 @@
     "concurrency": 4,
     "timeoutMs": 15000,
     "delayBetweenPagesMs": 500,
-    "userAgent": "RapidRadarBot/0.1 (business contact research; respects robots.txt)",
+    "userAgent": "Mozilla/5.0 (compatible; RapidRadarBot/0.1; business contact research; respects robots.txt)",
     "cacheDays": 30
   },
   "email": {
