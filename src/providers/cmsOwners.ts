@@ -8,7 +8,7 @@ import { cachedCsv, catalogCsvUrl, col } from './cmsData.js'
  * CMS Home Health Agency All Owners, joined to CMS Home Health Agency Enrollments on
  * ENROLLMENT ID. Enrollments give the agency's CCN and practice address; owners give the
  * people (and companies) that own or run it. Company owners are skipped as contacts.
- * NOT YET TESTED live (data.cms.gov blocked here).
+ * Tested live on 11-01-2026 (owners and enrollments columns as expected).
  */
 const ENROLLMENTS_TITLE = 'Home Health Agency Enrollments'
 
@@ -69,11 +69,12 @@ export const cmsOwnersProvider: Provider & { errors: string[]; files: string[] }
     const enr = col(e, /^enrollment id$/i, /enrollment.?id/i)
     if (!name || !enr) return null
     const ccn = col(e, /^ccn$/i, /certification number|ccn/i)
+    const npi = col(e, /^npi$/i)
     const dba = col(e, /doing business as/i)
     return {
       source: 'cms_owners',
       sourceId: enr,
-      ids: ccn ? { ccn } : undefined,
+      ids: { ...(ccn ? { ccn } : {}), ...(npi ? { npi } : {}) },
       name: titleCase(name),
       altNames: dba ? [titleCase(dba)] : undefined,
       address: titleCase([col(e, /address line 1/i), col(e, /address line 2/i)].filter(Boolean).join(' ')),

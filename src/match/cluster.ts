@@ -29,6 +29,7 @@ export type MatchVerdict = 'same' | 'maybe' | 'different'
 /** Decides whether two source records describe the same business. */
 export function compare(a: SourceRecord, b: SourceRecord, sharedDomains: Set<string>): MatchVerdict {
   if (a.ids?.ccn && a.ids.ccn === b.ids?.ccn) return 'same'
+  if (a.ids?.npi && a.ids.npi === b.ids?.npi) return 'same'
   const sim = bestNameSim(a, b)
   const sameZip = !!a.zip && a.zip === b.zip
   const sameStreet = !!streetKey(a.address) && streetKey(a.address) === streetKey(b.address)
@@ -64,6 +65,7 @@ export function clusterRecords(records: SourceRecord[], sharedDomains: Set<strin
     add(`w:${siteKey(r.website, sharedDomains)}`.replace(/^w:$/, ''), i)
     add(r.zip ? `z:${r.zip}` : '', i)
     add(r.ids?.ccn ? `c:${r.ids.ccn}` : '', i)
+    add(r.ids?.npi ? `n:${r.ids.npi}` : '', i)
     add(r.city ? `t:${r.city.toLowerCase()}|${r.state ?? ''}` : '', i)
   })
   const maybes: [number, number][] = []
