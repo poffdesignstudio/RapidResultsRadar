@@ -19,6 +19,9 @@ export interface Lead {
   /** Email domain mail-server check: true, false, or null when unknown. */
   mx?: boolean | null
   excluded?: string
+  crawlError?: string
+  baseFlags?: string[]
+  baseNotes?: string[]
   score: number
   possibleDuplicateOf: string[]
 }

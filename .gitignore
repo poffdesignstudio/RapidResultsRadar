@@ -5,3 +5,7 @@ state/
 .env.*
 !.env.example
 *.log
+.next/
+next-env.d.ts
+*.tsbuildinfo
+.vercel

@@ -4,7 +4,8 @@ import { config, googleApiKey, OUTPUT_DIR, ensureDir } from './config.js'
 import { formatDate, isoToDisplay } from './core/dates.js'
 import { httpGet } from './core/http.js'
 import { resolveArea } from './geo/area.js'
-import { textSearchPage, googleCounter } from './providers/googlePlaces.js'
+import { textSearchPage } from './providers/googlePlaces.js'
+import { CallCounter } from './budget/usage.js'
 import { latestRelease } from './providers/overture.js'
 import { nppesQuery } from './providers/nppes.js'
 import { pdcCsvUrl, catalogCsvUrl, cachedCsv, findHeader } from './providers/cmsData.js'
@@ -35,13 +36,14 @@ async function main() {
 
   await step('Google Places API (New) Text Search, basic fields (uses 1 call)', async () => {
     if (!googleApiKey()) { say('  SKIP  GOOGLE_PLACES_API_KEY is not set in .env'); return }
-    if (!googleCounter.canCall()) throw new Error(`Cap reached: ${googleCounter.stoppedAtCap}`)
-    const r = await textSearchPage('home care agency', { minLat: 34.79, maxLat: 35.66, minLng: -81.37, maxLng: -80.31 })
+    const googleCounter = new CallCounter('google', 1, config.google.maxCallsPerMonth)
+    if (!(await googleCounter.canCall())) throw new Error(`Cap reached: ${googleCounter.stoppedAtCap}`)
+    const r = await textSearchPage({ apiKey: googleApiKey(), counter: googleCounter }, 'home care agency', { minLat: 34.79, maxLat: 35.66, minLng: -81.37, maxLng: -80.31 })
     if (r.error) throw new Error(r.error)
     ok(`${r.places.length} places on page 1, next page available: ${r.nextPageToken ? 'yes' : 'no'}`)
     const p = r.places[0]
     if (p) ok(`First: ${p.displayName?.text} | ${p.formattedAddress} | id ${p.id} | status ${p.businessStatus}`)
-    ok(`Calls this month: ${googleCounter.monthCalls()} of ${config.google.maxCallsPerMonth}`)
+    ok(`Calls this month: ${await googleCounter.monthCalls()} of ${config.google.maxCallsPerMonth}`)
   })
 
   await step('Overture Maps places', async () => {

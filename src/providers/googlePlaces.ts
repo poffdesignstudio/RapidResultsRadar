@@ -1,4 +1,4 @@
-import { config, googleApiKey } from '../config.js'
+import { config } from '../config.js'
 import { CallCounter } from '../budget/usage.js'
 import { zip5 } from '../core/normalize.js'
 import { inArea } from '../geo/area.js'
@@ -33,11 +33,14 @@ interface GPlace {
   primaryType?: string
 }
 
-export const googleCounter = new CallCounter('google', config.google.maxCallsPerRun, config.google.maxCallsPerMonth)
+export interface GoogleAccess {
+  apiKey: string
+  counter: CallCounter
+}
 
 /** One Text Search request. Exported for the source check. */
-export async function textSearchPage(query: string, box: Box, pageToken?: string): Promise<{ places: GPlace[]; nextPageToken?: string; error?: string }> {
-  googleCounter.record()
+export async function textSearchPage(g: GoogleAccess, query: string, box: Box, pageToken?: string): Promise<{ places: GPlace[]; nextPageToken?: string; error?: string }> {
+  await g.counter.record()
   const body: Record<string, unknown> = {
     textQuery: query,
     pageSize: config.google.pageSize,
@@ -46,7 +49,7 @@ export async function textSearchPage(query: string, box: Box, pageToken?: string
   if (pageToken) body.pageToken = pageToken
   const res = await fetch(ENDPOINT, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': googleApiKey(), 'X-Goog-FieldMask': FIELD_MASK },
+    headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': g.apiKey, 'X-Goog-FieldMask': FIELD_MASK },
     body: JSON.stringify(body),
   })
   const json = (await res.json().catch(() => ({}))) as { places?: GPlace[]; nextPageToken?: string; error?: { message?: string } }
@@ -65,23 +68,25 @@ function split(b: Box): Box[] {
   ]
 }
 
-export const googleProvider: Provider & { errors: string[] } = {
+/** A Google provider bound to one API key and call counter. */
+export function createGoogleProvider(g: GoogleAccess | null): Provider & { errors: string[] } {
+  return {
   name: 'google',
   paid: true,
   errors: [],
 
   async search(ctx: RunContext): Promise<SourceRecord[]> {
     const { area, niche, log } = ctx
-    if (!config.google.enabled || !config.paidSources.google.enabled) { log('Google: turned off in config, skipped'); return [] }
-    if (!googleApiKey()) { log('Google: GOOGLE_PLACES_API_KEY not set, skipped'); return [] }
+    if (!g?.apiKey) { log('Google: GOOGLE_PLACES_API_KEY not set, skipped'); return [] }
+    const googleCounter = g.counter
     const found = new Map<string, GPlace>()
 
     const searchBox = async (query: string, box: Box, depth: number): Promise<void> => {
       let token: string | undefined
       let count = 0
       for (let page = 0; page < 3; page++) {
-        if (!googleCounter.canCall()) return
-        const r = await textSearchPage(query, box, token)
+        if (!(await googleCounter.canCall())) return
+        const r = await textSearchPage(g, query, box, token)
         if (r.error) { this.errors.push(r.error); log(`Google error: ${r.error}`); return }
         r.places.forEach((p) => found.set(p.id, p))
         count += r.places.length
@@ -133,6 +138,7 @@ export const googleProvider: Provider & { errors: string[] } = {
     const billable = Math.max(0, calls - config.google.freeCallsPerMonth)
     return (billable / 1000) * config.google.costPer1000
   },
+  }
 }
 
 /** List price of the calls before the free monthly allowance, for the report. */

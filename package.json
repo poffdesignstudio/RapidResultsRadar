@@ -8,6 +8,9 @@
     "node": ">=20.10"
   },
   "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
     "dig": "tsx src/cli.ts",
     "check-sources": "tsx src/checkSources.ts",
     "test": "tsx --test test/*.test.ts",
@@ -18,10 +21,16 @@
     "fflate": "0.8.2",
     "hyparquet": "1.32.0",
     "hyparquet-compressors": "1.1.2",
+    "next": "15.5.28",
+    "postgres": "3.4.9",
+    "react": "19.2.9",
+    "react-dom": "19.2.9",
     "robots-parser": "3.0.1"
   },
   "devDependencies": {
     "@types/node": "22.9.0",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
     "tsx": "4.19.2",
     "typescript": "5.6.3"
   }

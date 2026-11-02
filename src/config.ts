@@ -1,12 +1,14 @@
 import { readFileSync, existsSync, mkdirSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
+import defaults from '../config/default.json'
 
-export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+/** The project folder. The CLI runs from it; Vercel runs the web app from it too. */
+export const ROOT = process.env.RR_ROOT || process.cwd()
 export const DATA_DIR = join(ROOT, 'data')
 export const OUTPUT_DIR = join(ROOT, 'output')
 export const STATE_DIR = join(ROOT, 'state')
-export const CACHE_DIR = join(STATE_DIR, 'cache')
+/** Downloaded files (Census, CMS). Vercel only allows writing to /tmp, which lasts while an instance is warm. */
+export const CACHE_DIR = process.env.VERCEL ? '/tmp/rr-cache' : join(STATE_DIR, 'cache')
 
 /** Loads KEY=value lines from .env into process.env without overriding values already set. */
 function loadDotEnv() {
@@ -17,10 +19,10 @@ function loadDotEnv() {
     if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '')
   }
 }
-loadDotEnv()
+if (!process.env.VERCEL) loadDotEnv()
 
-type Config = typeof import('../config/default.json')
-export const config: Config = JSON.parse(readFileSync(join(ROOT, 'config', 'default.json'), 'utf8'))
+export type Config = typeof defaults
+export const config: Config = defaults
 
 export const googleApiKey = () => process.env.GOOGLE_PLACES_API_KEY?.trim() || ''
 

@@ -33,16 +33,31 @@ const GUESS_PATHS: [string, string][] = [['/about', 'about'], ['/about-us', 'abo
 type RobotsFn = (url: string, txt: string) => { isAllowed(url: string, ua?: string): boolean | undefined }
 const robotsParser = robotsParserModule as unknown as RobotsFn
 
-const cacheFile = (domain: string, scope: string) =>
-  join(ensureDir(join(CACHE_DIR, 'sites')), `${(domain + scope).replace(/[^a-z0-9.]+/gi, '_').slice(0, 120)}.json`)
-
 /**
  * Crawls a business website: the start page plus up to `maxPagesPerSite - 1` of its team,
  * about, contact and careers pages, all on the same site. Obeys robots.txt. When the
  * website is a franchise location page (e.g. brand.com/locations/charlotte/), it stays
  * under that path so it does not pick up the brand's head-office contacts.
  */
-export async function crawlSite(url: string, opts: { stayUnderPath?: boolean } = {}): Promise<SiteResult> {
+/** Where crawl results are kept between runs: files for the CLI, Postgres for the web app. */
+export interface CrawlCache {
+  get(key: string): Promise<SiteResult | null>
+  set(key: string, result: SiteResult): Promise<void>
+}
+
+export const fileCrawlCache: CrawlCache = {
+  async get(key) {
+    const f = join(ensureDir(join(CACHE_DIR, 'sites')), `${key.replace(/[^a-z0-9.]+/gi, '_').slice(0, 120)}.json`)
+    return existsSync(f) ? (JSON.parse(readFileSync(f, 'utf8')) as SiteResult) : null
+  },
+  async set(key, result) {
+    writeFileSync(join(ensureDir(join(CACHE_DIR, 'sites')), `${key.replace(/[^a-z0-9.]+/gi, '_').slice(0, 120)}.json`), JSON.stringify(result))
+  },
+}
+
+interface CrawlOpts { stayUnderPath?: boolean; cache?: CrawlCache }
+
+export async function crawlSite(url: string, opts: CrawlOpts = {}): Promise<SiteResult> {
   // Try https first: most sites listed as http:// also answer on https, and some networks allow only https.
   if (/^http:\/\//i.test(url)) {
     const secure = await crawlOnce(url.replace(/^http:/i, 'https:'), opts)
@@ -60,19 +75,18 @@ function onePerHost<T>(host: string, fn: () => Promise<T>): Promise<T> {
   return next
 }
 
-function crawlOnce(startUrl: string, opts: { stayUnderPath?: boolean }): Promise<SiteResult> {
+function crawlOnce(startUrl: string, opts: CrawlOpts): Promise<SiteResult> {
   return onePerHost(new URL(startUrl).host, () => crawlOnceNow(startUrl, opts))
 }
 
-async function crawlOnceNow(startUrl: string, opts: { stayUnderPath?: boolean }): Promise<SiteResult> {
+async function crawlOnceNow(startUrl: string, opts: CrawlOpts): Promise<SiteResult> {
+  const cache = opts.cache ?? fileCrawlCache
   const start = new URL(startUrl)
   const domain = domainFromUrl(startUrl)
   const scopePath = opts.stayUnderPath ? start.pathname.replace(/[^/]*$/, '') : '/'
-  const cf = cacheFile(start.host, scopePath === "/" ? "" : scopePath)
-  if (existsSync(cf)) {
-    const c = JSON.parse(readFileSync(cf, 'utf8')) as SiteResult
-    if (Date.now() - c.crawledAtMs < config.crawler.cacheDays * 86400000) return c
-  }
+  const cf = start.host + (scopePath === '/' ? '' : scopePath)
+  const cached = await cache.get(cf)
+  if (cached && Date.now() - cached.crawledAtMs < config.crawler.cacheDays * 86400000) return cached
 
   const result: SiteResult = { url: startUrl, domain, status: 'ok', pages: [], emails: [], people: [], hiring: 'unknown', crawledOn: formatDate(), crawledAtMs: Date.now() }
   const robotsUrl = `${start.origin}/robots.txt`
@@ -82,7 +96,7 @@ async function crawlOnceNow(startUrl: string, opts: { stayUnderPath?: boolean })
 
   if (!allowed(startUrl)) {
     result.status = 'blocked_by_robots'
-    writeFileSync(cf, JSON.stringify(result))
+    await cache.set(cf, result)
     return result
   }
 
@@ -136,6 +150,6 @@ async function crawlOnceNow(startUrl: string, opts: { stayUnderPath?: boolean })
   result.emails = [...uniq.values()]
   result.hiring = result.status !== 'ok' ? 'unknown' : hiring || sawCareers ? 'yes' : 'no'
   // Failed fetches are not cached, so the next run tries the site again.
-  if (cacheable) writeFileSync(cf, JSON.stringify(result))
+  if (cacheable) await cache.set(cf, result)
   return result
 }

@@ -15,15 +15,26 @@ This repo builds the search and data side only. It does not send email or track 
 - Secrets live in `.env` only. The website crawler respects robots.txt. No LinkedIn automation.
 - Every date shown or exported is MM-DD-YYYY.
 
-## Quick start
+## Web app (Stage 2)
 
-See `docs/SETUP-WINDOWS.md`. In short:
+A Next.js app for Vercel: log in, run a search, watch it progress, and work the results in a
+spreadsheet-style table. Setup is in `docs/DEPLOY-VERCEL.md`.
 
-```
-npm install
-.\check-sources
-.\dig --niche "home care" --city Charlotte --state NC --radius 30
-```
+- **Search**: niche, city and state or ZIP, radius, and which sources to use. Save the form as a
+  profile to rerun it later. A search runs in short steps (area, each source, matching, website
+  crawl in batches of 12, finalize) and saves progress after each, so it fits Vercel's time limits
+  and continues if the page is closed and reopened.
+- **Results**: sort, filter, page through, and click any cell to edit it. Edited cells are kept when
+  a later search finds the same business. Left-out businesses are listed with the reason.
+- **Export / import**: CSV export in the shared schema. Importing Leia's CSV matches rows on
+  `lead_id` and changes only the cells she filled in; blank cells never erase data. Every change is logged.
+- **Do-not-contact & suppression**: upload the existing-client list and unsubscribed addresses.
+  Both apply during every search and again at every export.
+- **Sources & calls**: an on/off switch for every source, and per-search and per-month call caps
+  plus this month's call count and estimated cost for each paid source.
+
+Run it locally: `npm install`, set `DATABASE_URL` and `ADMIN_PASSWORD`, then `npm run dev`.
+The Stage 1 command line still works: `npm run dig -- --niche "home care" --city Charlotte --state NC --radius 30`.
 
 ## How Stage 1 works
 
@@ -45,8 +56,11 @@ npm install
 ## Layout
 
 ```
-config/default.json   caps, on/off flags, crawl limits
-data/                 do_not_contact.csv, franchise_brands.csv, suppression.csv
+config/default.json   default caps, on/off flags, crawl limits
+src/app/              the web app: pages, API routes, components
+src/web/              web app server code: database, search job steps, leads, login
+src/pipeline.ts       the search steps shared by the web app and the command line
+src/data/             the franchise and chain brand list
 src/providers/        one file per source, each with search(), normalize(), estimateCost()
 src/enrich/           website crawler, contact extraction, email patterns, MX check
 src/match/            matching, franchise detection, do-not-contact, suppression

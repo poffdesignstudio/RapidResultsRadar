@@ -1,5 +1,9 @@
 import type { Lead } from '../leads/build.js'
 import { TRACKED } from '../leads/columns.js'
+import { config } from '../config.js'
+import { monthKey } from '../core/dates.js'
+import type { CallCounter } from '../budget/usage.js'
+import { googleListPrice } from '../providers/googlePlaces.js'
 
 export interface RunStats {
   title: string
@@ -75,3 +79,18 @@ export function buildReport(opts: {
   for (const [k, v] of count(leads.flatMap((l) => l.flags.map((f) => f.replace(/: .*|of RR-.*/, ''))), (x) => x).slice(0, 12)) L.push(`  ${v}  ${k}`)
   return L.join('\r\n') + '\r\n'
 }
+
+/** The Google section of the report: calls, caps and estimated cost. */
+export function googleReportLines(counter: Pick<CallCounter, 'runCalls' | 'maxPerRun' | 'maxPerMonth' | 'stoppedAtCap'>, monthBefore: number, monthAfter: number, used: boolean, freePerMonth = config.google.freeCallsPerMonth, costPer1000 = config.google.costPer1000): string[] {
+  if (!used) return ['Not used (no API key, turned off, or not selected). Calls: 0. Cost: $0.00']
+  const billable = (n: number) => Math.max(0, n - freePerMonth)
+  const afterFree = ((billable(monthAfter) - billable(monthBefore)) / 1000) * costPer1000
+  return [
+    `Calls this run: ${counter.runCalls} (run cap ${counter.maxPerRun})`,
+    `Calls in ${monthKey()}: ${monthAfter} of ${counter.maxPerMonth} monthly cap`,
+    `Estimated cost this run: $${googleListPrice(counter.runCalls).toFixed(2)} at list price, $${afterFree.toFixed(2)} after the ${freePerMonth} free monthly calls`,
+    `Pricing used: $${costPer1000} per 1,000 calls. ${config.google.skuNote}`,
+    ...(counter.stoppedAtCap ? [`STOPPED at the ${counter.stoppedAtCap}. Some businesses may be missing.`] : []),
+  ]
+}
+

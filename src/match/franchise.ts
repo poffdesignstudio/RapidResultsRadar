@@ -1,7 +1,4 @@
-import { readFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
-import { DATA_DIR } from '../config.js'
-import { parseCsv } from '../core/csv.js'
+import { FRANCHISE_BRANDS } from '../data/franchiseBrands.js'
 import { normName, domainFromUrl } from '../core/normalize.js'
 
 export interface Brand { brand: string; kind: string; aliases: string[]; domains: string[] }
@@ -9,15 +6,12 @@ export interface Brand { brand: string; kind: string; aliases: string[]; domains
 let brands: Brand[] | null = null
 export function loadBrands(): Brand[] {
   if (brands) return brands
-  const p = join(DATA_DIR, 'franchise_brands.csv')
-  brands = existsSync(p)
-    ? parseCsv(readFileSync(p, 'utf8')).map((r) => ({
-        brand: r.brand,
-        kind: r.kind,
-        aliases: (r.aliases || r.brand).split('|').map((a) => normName(a)).filter(Boolean),
-        domains: (r.domains || '').split('|').map((d) => d.trim().toLowerCase()).filter(Boolean),
-      }))
-    : []
+  brands = FRANCHISE_BRANDS.map((r) => ({
+    brand: r.brand,
+    kind: r.kind,
+    aliases: (r.aliases || r.brand).split('|').map((a) => normName(a)).filter(Boolean),
+    domains: (r.domains || '').split('|').map((d) => d.trim().toLowerCase()).filter(Boolean),
+  }))
   return brands
 }
 
