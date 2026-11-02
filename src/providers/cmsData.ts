@@ -8,7 +8,6 @@ import { parseCsv } from '../core/csv.js'
  * Downloads CMS data files once and caches them for `cms.cacheDays`. CMS column names shift
  * between releases, so callers look columns up by pattern (see `col`) instead of exact name.
  *
- * NOT YET TESTED with a live call: this cloud environment blocks data.cms.gov.
  */
 export async function cachedCsv(cacheName: string, url: string): Promise<Record<string, string>[]> {
   const dir = ensureDir(join(CACHE_DIR, 'cms'))
@@ -65,12 +64,17 @@ export async function catalogCsvUrl(title: string): Promise<{ url: string; label
     if (!res.ok) throw new Error(`HTTP ${res.status} reading ${config.cms.catalogUrl}`)
     catalog = (JSON.parse(res.text) as { dataset?: CatalogDataset[] }).dataset ?? []
   }
+  // Each quarterly release is its own catalog entry, titled "<title> : YYYY-MM-DD". Take the newest.
   const want = title.toLowerCase()
-  const ds = catalog.find((d) => d.title?.toLowerCase() === want) ?? catalog.find((d) => d.title?.toLowerCase().includes(want))
-  if (!ds) throw new Error(`Dataset "${title}" not found in the data.cms.gov catalog`)
-  const csvs = (ds.distribution ?? []).filter((d) => d.downloadURL && (/csv/i.test(d.mediaType ?? '') || /\.csv(\?|$)/i.test(d.downloadURL)))
-  // Newest first: sort by the modified or temporal date when present, else keep catalog order.
-  csvs.sort((a, b) => String(b.modified ?? b.temporal ?? '').localeCompare(String(a.modified ?? a.temporal ?? '')))
+  const matches = catalog.filter((d) => {
+    const t = d.title?.toLowerCase() ?? ''
+    return t === want || t.startsWith(`${want} :`)
+  })
+  if (!matches.length) throw new Error(`Dataset "${title}" not found in the data.cms.gov catalog`)
+  const csvs = matches
+    .flatMap((ds) => (ds.distribution ?? []).map((d) => ({ ...d, modified: d.modified ?? ds.modified, title: d.title ?? ds.title })))
+    .filter((d) => d.downloadURL && (/csv/i.test(d.mediaType ?? '') || /\.csv(\?|$)/i.test(d.downloadURL)))
+  csvs.sort((a, b) => String(b.modified ?? '').localeCompare(String(a.modified ?? '')))
   if (!csvs.length) throw new Error(`No CSV download for "${title}"`)
   return { url: csvs[0].downloadURL!, label: csvs[0].title }
 }

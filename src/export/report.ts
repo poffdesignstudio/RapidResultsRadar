@@ -68,6 +68,7 @@ export function buildReport(opts: {
   L.push('DO-NOT-CONTACT', `  ${opts.dncLine}`, '')
   L.push('LEFT OUT OF THE EXPORT')
   for (const [k, v] of count(excluded, (l) => l.excluded!.replace(/:.*/, ''))) L.push(`  ${k}: ${v}`)
+  if (excluded.length) L.push('  Examples:', ...excluded.slice(0, 15).map((l) => `    ${l.fields.company_name?.value ?? '?'}  (${l.excluded})`))
   if (!excluded.length) L.push('  None')
   L.push('')
   L.push('MOST COMMON FLAGS')

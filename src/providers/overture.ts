@@ -1,7 +1,7 @@
 import { asyncBufferFromUrl, parquetMetadataAsync, parquetReadObjects, type FileMetaData } from 'hyparquet'
 import { compressors } from 'hyparquet-compressors'
 import { config } from '../config.js'
-import { httpGet } from '../core/http.js'
+import { httpGet, sleep } from '../core/http.js'
 import { normPhone, zip5, normalizeUrl } from '../core/normalize.js'
 import { inArea } from '../geo/area.js'
 import type { Provider, RunContext, SourceRecord } from '../core/types.js'
@@ -64,8 +64,19 @@ export const overtureProvider: Provider & { release?: string } = {
     log(`Overture release ${release}: ${files.length} place files`)
     const b = area.bbox
     const rows: OvertureRow[] = []
-    await Promise.all(
-      files.map(async (url) => {
+    // Read each file up to 3 times: a long download through a slow network can drop partway.
+    const readFile = async (url: string) => {
+      for (let attempt = 1; ; attempt++) {
+        const before = rows.length
+        try { return await readOne(url) } catch (e) {
+          rows.length = before
+          if (attempt >= 3) throw e
+          log(`Overture: retrying a file after "${(e as Error).message}" (attempt ${attempt + 1} of 3)`)
+          await sleep(2000 * attempt)
+        }
+      }
+    }
+    const readOne = async (url: string) => {
         const file = await asyncBufferFromUrl({ url })
         const md = await parquetMetadataAsync(file)
         let start = 0
@@ -82,8 +93,9 @@ export const overtureProvider: Provider & { release?: string } = {
           }
           start += n
         }
-      }),
-    )
+    }
+    // A few files at a time, so a retry does not drop rows another file added in the meantime.
+    for (const url of files) await readFile(url)
     const tax = new Set(niche.overtureTaxonomies)
     const kw = niche.keywords.map((k) => k.toLowerCase())
     const out: SourceRecord[] = []

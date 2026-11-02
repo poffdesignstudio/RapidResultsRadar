@@ -42,7 +42,29 @@ const cacheFile = (domain: string, scope: string) =>
  * website is a franchise location page (e.g. brand.com/locations/charlotte/), it stays
  * under that path so it does not pick up the brand's head-office contacts.
  */
-export async function crawlSite(startUrl: string, opts: { stayUnderPath?: boolean } = {}): Promise<SiteResult> {
+export async function crawlSite(url: string, opts: { stayUnderPath?: boolean } = {}): Promise<SiteResult> {
+  // Try https first: most sites listed as http:// also answer on https, and some networks allow only https.
+  if (/^http:\/\//i.test(url)) {
+    const secure = await crawlOnce(url.replace(/^http:/i, 'https:'), opts)
+    if (secure.status !== 'unreachable') return secure
+  }
+  return crawlOnce(url, opts)
+}
+
+/** Crawls of the same site run one at a time, so chains with many office pages are not hammered. */
+const hostQueue = new Map<string, Promise<unknown>>()
+function onePerHost<T>(host: string, fn: () => Promise<T>): Promise<T> {
+  const prev = hostQueue.get(host) ?? Promise.resolve()
+  const next = prev.then(fn, fn)
+  hostQueue.set(host, next.catch(() => undefined))
+  return next
+}
+
+function crawlOnce(startUrl: string, opts: { stayUnderPath?: boolean }): Promise<SiteResult> {
+  return onePerHost(new URL(startUrl).host, () => crawlOnceNow(startUrl, opts))
+}
+
+async function crawlOnceNow(startUrl: string, opts: { stayUnderPath?: boolean }): Promise<SiteResult> {
   const start = new URL(startUrl)
   const domain = domainFromUrl(startUrl)
   const scopePath = opts.stayUnderPath ? start.pathname.replace(/[^/]*$/, '') : '/'
@@ -76,10 +98,11 @@ export async function crawlSite(startUrl: string, opts: { stayUnderPath?: boolea
     if (seen.has(key) || !allowed(url)) continue
     seen.add(key)
     if (result.pages.length) await sleep(config.crawler.delayBetweenPagesMs)
-    const res = await httpGet(url)
+    let res = await httpGet(url)
+    if (res.status === 429) { await sleep(5000); res = await httpGet(url) } // asked to slow down: wait, try once more
     result.pages.push({ url, kind, status: res.status })
     if (!res.ok) {
-      if (kind === 'home') { result.status = 'unreachable'; break }
+      if (kind === 'home') { result.status = res.status === 403 || res.status === 429 ? 'blocked_by_site' : 'unreachable'; break }
       continue
     }
     if (!/html/i.test(res.contentType) && kind === 'home') { result.status = 'not_html'; break }
@@ -108,9 +131,11 @@ export async function crawlSite(startUrl: string, opts: { stayUnderPath?: boolea
   }
 
   result.people = dedupePeople(result.people)
+  const cacheable = result.status !== 'unreachable'
   const uniq = new Map(result.emails.map((e) => [e.email, e]))
   result.emails = [...uniq.values()]
   result.hiring = result.status !== 'ok' ? 'unknown' : hiring || sawCareers ? 'yes' : 'no'
-  writeFileSync(cf, JSON.stringify(result))
+  // Failed fetches are not cached, so the next run tries the site again.
+  if (cacheable) writeFileSync(cf, JSON.stringify(result))
   return result
 }

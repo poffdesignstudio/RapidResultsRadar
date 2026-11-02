@@ -55,14 +55,35 @@ export function applyPattern(pattern: string, p: Pick<Person, 'first' | 'last'>,
 
 const mxCache = new Map<string, Promise<boolean | null>>()
 
+/**
+ * Looks up the domain's mail servers over HTTPS (Google's public DNS), which works in cloud
+ * sessions where ordinary DNS lookups are blocked. Falls back to ordinary DNS if that fails.
+ */
+async function mxOverHttps(domain: string): Promise<boolean | null> {
+  try {
+    const res = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=MX`, { signal: AbortSignal.timeout(10000) })
+    if (!res.ok) return null
+    const j = (await res.json()) as { Status?: number; Answer?: { type: number }[] }
+    if (j.Status === 3) return false // the domain does not exist
+    if (j.Status !== 0) return null
+    return (j.Answer ?? []).some((a) => a.type === 15)
+  } catch {
+    return null
+  }
+}
+
 /** True if the domain has a mail server, false if it has none, null if the lookup failed. */
 export function hasMx(domain: string): Promise<boolean | null> {
   if (!mxCache.has(domain)) {
     mxCache.set(
       domain,
-      dns.resolveMx(domain).then(
-        (r) => r.length > 0,
-        (e: NodeJS.ErrnoException) => (e.code === 'ENODATA' || e.code === 'ENOTFOUND' ? false : null),
+      mxOverHttps(domain).then((viaHttps) =>
+        viaHttps !== null
+          ? viaHttps
+          : dns.resolveMx(domain).then(
+              (r) => r.length > 0,
+              (e: NodeJS.ErrnoException) => (e.code === 'ENODATA' || e.code === 'ENOTFOUND' ? false : null),
+            ),
       ),
     )
   }

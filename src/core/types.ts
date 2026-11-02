@@ -69,6 +69,14 @@ export interface Niche {
   keywords: string[]
   /** Overture categories that rule a keyword match out (e.g. real estate for "home"). */
   excludeCategories: RegExp
+  /** A business name with one of these words is likely in the niche. */
+  includeNames: RegExp
+  /** A name with one of these is clearly in the niche ("home health"), even next to a word like "hospital". */
+  strongNames: RegExp
+  /** A name with one of these is not in the niche (facilities, unrelated trades), unless it also has a strong name. */
+  excludeNames: RegExp
+  /** A name with one of these is never in the niche, whatever else it says ("In Home Daycare"). */
+  hardExcludeNames: RegExp
   /** Run the CMS and NPPES home health sources. */
   healthcare: boolean
   defaultSegment: string

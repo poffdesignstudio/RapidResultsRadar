@@ -63,3 +63,16 @@ test('shared inboxes count as generic', () => {
 test('dates are MM-DD-YYYY', () => {
   assert.equal(formatDate(new Date(2026, 9, 31)), '10-31-2026')
 })
+
+import { resolveNiche, nicheMismatch } from '../src/niches.js'
+
+test('home healthcare filter keeps agencies and drops facilities and unrelated businesses', () => {
+  const n = resolveNiche('home care')
+  const keep = (name: string, extra = {}) => nicheMismatch(n, { names: [name], government: false, brand: false, category: false, ...extra }) === ''
+  for (const name of ['Affordable Homecare', 'Caring At Heart', 'Brookdale Home Health Charlotte', 'Gaston Memorial Hospital Home Health Care', 'Victorious Health Services', 'Bluedot Cares'])
+    assert.ok(keep(name), `should keep ${name}`)
+  for (const name of ['Walmart Home Services', 'Brookdale Union Park', 'Smith Nursing Home', 'Terrace Ridge Assisted Living', 'Carolina Specialty Transport', 'One Big Familia In Home Daycare', 'Dolfin Home Loans', 'Lincare', 'Lake Monroe Group Home'])
+    assert.ok(!keep(name), `should drop ${name}`)
+  assert.ok(keep('Right at Home', { brand: true }))
+  assert.ok(keep('Some Llc', { government: true }))
+})

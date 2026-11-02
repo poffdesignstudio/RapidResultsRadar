@@ -9,12 +9,11 @@ import type { Provider, RunContext, SourceRecord } from '../core/types.js'
  * taxonomies. Each record names an "authorized official" with a title, which is often the owner
  * or administrator. NPPES has no emails.
  *
- * The API returns at most 200 per call, and skip can go to 1000, so one query tops out around
- * 1,200 results. We query one city at a time for every town in the radius, which stays far
+ * The API returns at most 200 per call. The source check on 11-01-2026 showed skip working past
+ * 1,200, so we page up to skip 2000. We query one city at a time for every town in the radius, which stays far
  * below that, then keep only records whose ZIP is inside the radius.
  *
- * NOT YET TESTED with a live call: this cloud environment blocks npiregistry.cms.hhs.gov.
- * Run `npm run check-sources` on your computer to test it.
+ * Tested live on 11-01-2026: authorized official name and title present, no email field.
  */
 export const NPPES_TAXONOMIES: Record<string, string> = {
   '251E00000X': 'Home Health',
@@ -65,7 +64,7 @@ export const nppesProvider: Provider & { errors: string[]; calls: number } = {
     log(`NPPES: ${jobs.length} queries (${area.places.length} towns x ${Object.keys(NPPES_TAXONOMIES).length} care types)`)
     const byNpi = new Map<string, NpiResult>()
     await mapLimit(jobs, config.nppes.concurrency, async (j) => {
-      for (let skip = 0; skip <= 1000; skip += 200) {
+      for (let skip = 0; skip <= 2000; skip += 200) {
         this.calls++
         const r = await nppesQuery({ taxonomy_description: j.desc, city: j.city, state: j.state, skip: String(skip) })
         if (r.error) {
@@ -98,6 +97,7 @@ export const nppesProvider: Provider & { errors: string[]; calls: number } = {
     return {
       source: 'nppes',
       sourceId: String(r.number),
+      ids: { npi: String(r.number) },
       name: titleCase(b.organization_name),
       altNames: (r.other_names ?? []).map((o) => o.organization_name).filter((n): n is string => !!n).map(titleCase),
       address: [loc?.address_1, loc?.address_2].filter(Boolean).map((s) => titleCase(s!)).join(' '),

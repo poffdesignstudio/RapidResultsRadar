@@ -7,7 +7,7 @@ import { cachedCsv, col, pdcCsvUrl } from './cmsData.js'
 /**
  * CMS Home Health Care Agencies (Provider Data Catalog, dataset 6jpm-sxkc). Medicare-certified
  * agencies only: name, address, phone, ownership type and CCN. Private-pay home care is
- * usually missing. NOT YET TESTED live (data.cms.gov blocked here).
+ * usually missing.
  */
 export const cmsHomeHealthProvider: Provider & { errors: string[]; fileDate?: string } = {
   name: 'cms_hha',
