@@ -13,12 +13,12 @@ export type Campaign = (typeof CAMPAIGNS)[number]
 
 export const CAMPAIGN_LABELS: Record<Campaign, string> = {
   EMAIL: 'Email outreach',
-  LINKEDIN: 'LinkedIn outreach',
+  LINKEDIN: 'DM LinkedIn',
 }
 
 export const CAMPAIGN_SHORT_LABELS: Record<Campaign, string> = {
   EMAIL: 'Email',
-  LINKEDIN: 'LinkedIn',
+  LINKEDIN: 'DM LinkedIn',
 }
 
 const EMAIL_STAGES = [
@@ -64,7 +64,7 @@ export function parseCampaign(value: unknown): Campaign | undefined {
   if (typeof value !== 'string') return undefined
   const normalized = value.trim().toUpperCase().replace(/[^A-Z]/g, '')
   if (normalized === 'EMAIL' || normalized === 'EMAILOUTREACH') return 'EMAIL'
-  if (normalized === 'LINKEDIN' || normalized === 'LINKEDINOUTREACH') return 'LINKEDIN'
+  if (normalized === 'LINKEDIN' || normalized === 'LINKEDINOUTREACH' || normalized === 'DMLINKEDIN') return 'LINKEDIN'
   return undefined
 }
 
