@@ -1,5 +1,5 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { COLUMNS } from '../../leads/columns'
 
 type Row = Record<string, string>
@@ -25,7 +25,12 @@ const QUICK: [string, string, (r: Row) => boolean][] = [
 ]
 const PAGE = 100
 
-export function LeadsTable({ rows, onChange }: { rows: Row[]; onChange?: (leadId: string, col: string, value: string) => void }) {
+export function LeadsTable({ rows, onChange, onDeleteSelected }: {
+  rows: Row[]
+  onChange?: (leadId: string, col: string, value: string) => void
+  /** When given (the All leads page), rows get checkboxes and a bulk Delete button appears. */
+  onDeleteSelected?: (leadIds: string[]) => Promise<void>
+}) {
   const [filter, setFilter] = useState('')
   const [quick, setQuick] = useState('all')
   const [sort, setSort] = useState<{ col: string; dir: 1 | -1 }>({ col: 'confidence', dir: -1 })
@@ -35,6 +40,9 @@ export function LeadsTable({ rows, onChange }: { rows: Row[]; onChange?: (leadId
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [deleting, setDeleting] = useState(false)
+  const masterRef = useRef<HTMLInputElement>(null)
 
   const cols = allCols ? [...COLUMNS] : MAIN_COLUMNS
   const shown = useMemo(() => {
@@ -51,6 +59,47 @@ export function LeadsTable({ rows, onChange }: { rows: Row[]; onChange?: (leadId
   }, [rows, filter, quick, sort])
   const pages = Math.max(1, Math.ceil(shown.length / PAGE))
   const pageRows = shown.slice(page * PAGE, page * PAGE + PAGE)
+
+  // Keep selection and edit state pointing at leads that still exist (e.g. after a delete
+  // reloads the pool), and never sit on a page past the end.
+  useEffect(() => {
+    const ids = new Set(rows.map((r) => r.lead_id))
+    setSelected((prev) => (prev.size && [...prev].some((id) => !ids.has(id)) ? new Set([...prev].filter((id) => ids.has(id))) : prev))
+    setEditing((prev) => (prev && !ids.has(prev.id) ? null : prev))
+  }, [rows])
+  useEffect(() => { if (page >= pages) setPage(pages - 1) }, [page, pages])
+
+  const pageSelected = pageRows.filter((r) => selected.has(r.lead_id)).length
+  useEffect(() => {
+    if (masterRef.current) masterRef.current.indeterminate = pageSelected > 0 && pageSelected < pageRows.length
+  }, [pageSelected, pageRows.length])
+
+  const toggleRow = (id: string, on: boolean) => setSelected((prev) => {
+    const next = new Set(prev)
+    if (on) next.add(id); else next.delete(id)
+    return next
+  })
+  const togglePage = (on: boolean) => setSelected((prev) => {
+    const next = new Set(prev)
+    for (const r of pageRows) { if (on) next.add(r.lead_id); else next.delete(r.lead_id) }
+    return next
+  })
+
+  const deleteSelected = async () => {
+    if (!onDeleteSelected || !selected.size || deleting) return
+    const ids = [...selected]
+    if (!window.confirm(`Delete ${ids.length} selected lead${ids.length === 1 ? '' : 's'} permanently? This removes them from All leads and cannot be undone.`)) return
+    setDeleting(true)
+    setError('')
+    try {
+      await onDeleteSelected(ids)
+      setSelected(new Set())
+    } catch (e) {
+      setError((e as Error).message || 'Delete failed')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const save = async (r: Row, col: string, value: string) => {
     setEditing(null)
@@ -96,6 +145,11 @@ export function LeadsTable({ rows, onChange }: { rows: Row[]; onChange?: (leadId
         <label className="small muted" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <input type="checkbox" checked={allCols} onChange={(e) => setAllCols(e.target.checked)} /> Show all CSV columns
         </label>
+        {onDeleteSelected && (
+          <button className="danger" disabled={!selected.size || deleting} onClick={deleteSelected}>
+            {deleting ? 'Deleting…' : `Delete selected${selected.size ? ` (${selected.size})` : ''}`}
+          </button>
+        )}
         <span className="muted small">{shown.length} of {rows.length} rows · click a cell to edit</span>
       </div>
       {error && <div className="alert bad">{error}</div>}
@@ -103,6 +157,13 @@ export function LeadsTable({ rows, onChange }: { rows: Row[]; onChange?: (leadId
         <table className="grid">
           <thead>
             <tr>
+              {onDeleteSelected && (
+                <th style={{ width: 28 }}>
+                  <input ref={masterRef} type="checkbox" aria-label="Select all leads on this page"
+                    checked={pageRows.length > 0 && pageSelected === pageRows.length}
+                    onChange={(e) => togglePage(e.target.checked)} />
+                </th>
+              )}
               {cols.map((c) => (
                 <th key={c} onClick={() => setSort((s) => ({ col: c, dir: s.col === c ? (s.dir === 1 ? -1 : 1) : 1 }))}>
                   {LABELS[c] ?? c.replace(/_/g, ' ')}{sort.col === c ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}
@@ -113,6 +174,14 @@ export function LeadsTable({ rows, onChange }: { rows: Row[]; onChange?: (leadId
           <tbody>
             {pageRows.map((r) => (
               <tr key={r.lead_id}>
+                {onDeleteSelected && (
+                  <td>
+                    <input type="checkbox" aria-label={`Select ${r.company_name || r.lead_id}`}
+                      checked={selected.has(r.lead_id)}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => toggleRow(r.lead_id, e.target.checked)} />
+                  </td>
+                )}
                 {cols.map((c) => {
                   const editable = !READ_ONLY.has(c)
                   return (
@@ -125,7 +194,7 @@ export function LeadsTable({ rows, onChange }: { rows: Row[]; onChange?: (leadId
                 })}
               </tr>
             ))}
-            {!pageRows.length && <tr><td colSpan={cols.length} className="muted">No rows</td></tr>}
+            {!pageRows.length && <tr><td colSpan={cols.length + (onDeleteSelected ? 1 : 0)} className="muted">No rows</td></tr>}
           </tbody>
         </table>
       </div>
