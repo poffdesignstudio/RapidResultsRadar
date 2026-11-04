@@ -20,7 +20,7 @@ export function Nav() {
   }
   return (
     <header className="top">
-      <Link href="/" className="brand">Rapid <span>Radar</span> · Lead Digger</Link>
+      <Link href="/" className="brand"><img src="/rapid-radar-logo.png" alt="Rapid Radar" style={{ height: 40, width: 'auto', display: 'block' }} /></Link>
       <nav>
         {LINKS.map(([href, label]) => (
           <Link key={href} href={href} className={(href === '/' ? path === '/' || path.startsWith('/searches') : path.startsWith(href)) ? 'on' : ''}>{label}</Link>
