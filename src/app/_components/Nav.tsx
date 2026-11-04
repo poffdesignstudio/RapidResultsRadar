@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 const LINKS = [
   ['/', 'Search'],
   ['/leads', 'All leads'],
+  ['/tracker', 'Lead tracker'],
   ['/lists', 'Do-not-contact & suppression'],
   ['/sources', 'Sources & calls'],
 ]
