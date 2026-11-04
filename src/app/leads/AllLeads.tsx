@@ -13,6 +13,14 @@ export function AllLeads() {
   const load = () => fetch('/api/leads').then(async (r) => { const j = await r.json(); if (!r.ok) throw new Error(j.error); setRows(j.leads) }).catch((e) => setError(e.message))
   useEffect(() => { load() }, [])
 
+  const deleteSelected = async (ids: string[]) => {
+    const res = await fetch('/api/leads', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) })
+    const j = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(j.error ?? 'Delete failed')
+    setSummary(null)
+    load()
+  }
+
   const importFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -52,7 +60,7 @@ export function AllLeads() {
         )}
       </div>
       {error && <div className="alert bad">{error}</div>}
-      {rows ? <LeadsTable rows={rows} /> : <p className="muted">Loading…</p>}
+      {rows ? <LeadsTable rows={rows} onDeleteSelected={deleteSelected} /> : <p className="muted">Loading…</p>}
     </>
   )
 }
