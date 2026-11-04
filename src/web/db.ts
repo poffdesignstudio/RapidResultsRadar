@@ -125,4 +125,44 @@ CREATE TABLE IF NOT EXISTS crawl_cache (
   result jsonb NOT NULL,
   crawled_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS tracker_leads (
+  id bigserial PRIMARY KEY,
+  dedupe_key text UNIQUE NOT NULL,  -- normalized company name + phone, or email when there is no phone
+  company_name text NOT NULL DEFAULT '',
+  segment text NOT NULL DEFAULT '',
+  franchise_brand text NOT NULL DEFAULT '',
+  contact_name text NOT NULL DEFAULT '',
+  contact_title text NOT NULL DEFAULT '',
+  personal_email text NOT NULL DEFAULT '',
+  company_email text NOT NULL DEFAULT '',
+  phone text NOT NULL DEFAULT '',
+  contact_phone text NOT NULL DEFAULT '',
+  address text NOT NULL DEFAULT '',
+  city text NOT NULL DEFAULT '',
+  state text NOT NULL DEFAULT '',
+  zip text NOT NULL DEFAULT '',
+  website text NOT NULL DEFAULT '',
+  linkedin_url text NOT NULL DEFAULT '',
+  facebook_url text NOT NULL DEFAULT '',
+  source text NOT NULL DEFAULT '',
+  notes text NOT NULL DEFAULT '',
+  campaign text NOT NULL DEFAULT 'EMAIL',  -- EMAIL or LINKEDIN, chosen when the lead is set up
+  stage text NOT NULL DEFAULT 'INITIAL PERSONAL EMAIL',  -- one of src/tracker/stages.ts
+  stage_updated_at timestamptz NOT NULL DEFAULT now(),
+  skip_website_form boolean NOT NULL DEFAULT false,  -- stage 8 does not apply to this lead
+  skip_facebook_dm boolean NOT NULL DEFAULT false,  -- stage 9 does not apply to this lead
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE tracker_leads ADD COLUMN IF NOT EXISTS campaign text NOT NULL DEFAULT 'EMAIL';
+CREATE INDEX IF NOT EXISTS tracker_leads_stage ON tracker_leads (stage);
+CREATE TABLE IF NOT EXISTS tracker_stage_history (
+  id bigserial PRIMARY KEY,
+  lead_id bigint NOT NULL,
+  from_stage text,
+  to_stage text NOT NULL,
+  source text NOT NULL,           -- manual, import:<file name>
+  changed_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS tracker_stage_history_lead ON tracker_stage_history (lead_id);
 `
