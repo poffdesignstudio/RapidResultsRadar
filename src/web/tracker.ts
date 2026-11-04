@@ -1,7 +1,9 @@
+import { randomBytes } from 'node:crypto'
 import { parseCsv } from '../core/csv.js'
 import { domainFromUrl, normName, normPhone, streetKey, zip5 } from '../core/normalize.js'
-import { checkDnc } from '../match/doNotContact.js'
-import { isSuppressed } from '../pipeline.js'
+import { LEAD_ID_ALPHABET } from '../leads/ledger.js'
+import { checkDnc, type DncRow } from '../match/doNotContact.js'
+import { isSuppressed, type Suppression } from '../pipeline.js'
 import {
   ALL_STAGES, firstStageForCampaign, isStage, nextStage, parseCampaign,
   type Campaign,
@@ -160,6 +162,38 @@ const clean = (patch: Partial<Record<TrackerField, string>>) => {
   return out
 }
 
+/**
+ * The do-not-contact screening every lead entering a campaign goes through, in the order
+ * the checks have always run: suppression by email or domain, the existing-clients list,
+ * suppression by phone, then suppression by business name. Both lists count — a client
+ * "drop" match or any suppression match keeps the lead out. Returns why the lead is
+ * blocked (the suffix the import summary has always shown), or null when it may be worked.
+ */
+export function trackerDncBlock(
+  data: Partial<Record<TrackerField, string>>,
+  dnc: DncRow[] | null,
+  sup: Suppression,
+): string | null {
+  const emails = [data.personal_email, data.company_email].filter(Boolean) as string[]
+  const domain = domainFromUrl(data.website ?? '')
+  if (emails.some((e) => isSuppressed(sup, e)) || (domain && isSuppressed(sup, undefined, domain))) {
+    return 'on the DNC list'
+  }
+  if (dnc) {
+    const d = checkDnc(dnc, { names: [data.company_name ?? ''], brand: data.franchise_brand || undefined, city: data.city, state: data.state })
+    if (d.action === 'drop') return d.reason ?? 'on the DNC list'
+  }
+  // Both lists screen on phone too, and suppression entries with a business
+  // name screen on name — the same coverage the search applies.
+  const phones = [normPhone(data.phone ?? ''), normPhone(data.contact_phone ?? '')].filter(Boolean)
+  if (phones.some((p) => sup.phones?.has(p))) return 'on the DNC list'
+  if (sup.names?.length) {
+    const s = checkDnc(sup.names, { names: [data.company_name ?? ''], brand: data.franchise_brand || undefined, city: data.city, state: data.state })
+    if (s.action === 'drop') return 'on the suppression list'
+  }
+  return null
+}
+
 /** A new lead starts at stage 1 of its campaign's ladder (LINKEDIN campaigns start at INITIAL LINKEDIN DM). */
 export async function createTrackerLead(
   campaignId: number,
@@ -181,6 +215,38 @@ export async function createTrackerLead(
   if (!inserted) throw new Error('Could not create the lead')
   await q('INSERT INTO tracker_stage_history (lead_id, from_stage, to_stage, source) VALUES ($1, NULL, $2, $3)', [inserted.id, firstStage, source])
   return asLead((await q1<RawLead>(`${SELECT} WHERE id=$1`, [inserted.id]))!)
+}
+
+/** A hand-entered lead gets a clearly manual LEAD ID, in the app's usual ID shape, unique across campaigns. */
+async function newManualExtLeadId(): Promise<string> {
+  for (let tries = 0; tries < 10; tries++) {
+    const candidate = 'MANUAL-' + [...randomBytes(8)].map((x) => LEAD_ID_ALPHABET[x % 32]).join('')
+    const taken = await q1('SELECT 1 FROM tracker_leads WHERE ext_lead_id=$1', [candidate])
+    if (!taken) return candidate
+  }
+  throw new Error('Could not assign a lead ID — please try again')
+}
+
+/**
+ * One lead typed in by hand (the Add lead forms). Same record shape as an imported lead —
+ * first stage of the campaign's ladder, name + phone dedupe within the campaign — plus the
+ * housekeeping a spreadsheet row normally brings with it: the domain comes from the
+ * website, the source reads "Manual entry", and the lead gets a MANUAL- lead ID so Leah's
+ * sheets can match it on LEAD ID later. A lead on either do-not-contact list is refused
+ * with the reason instead of being added.
+ */
+export async function createManualTrackerLead(
+  campaignId: number,
+  input: Partial<Record<TrackerField, string>>,
+): Promise<TrackerLead> {
+  const data = clean(input)
+  if (!data.company_name) throw new Error('Company name is required')
+  if (!data.domain && data.website) data.domain = domainFromUrl(data.website)
+  if (!data.source) data.source = 'Manual entry'
+  const block = trackerDncBlock(data, await loadDncRows(), await loadSuppressionSets())
+  if (block) throw new Error(`"${data.company_name}" was not added — it matches the do-not-contact list (${block}).`)
+  if (!data.ext_lead_id) data.ext_lead_id = await newManualExtLeadId()
+  return createTrackerLead(campaignId, data, 'manual')
 }
 
 /**
@@ -337,26 +403,8 @@ export async function importTrackerRows(raw: Record<string, string>[], fileName:
     try {
       if (!data.company_name) throw new Error('No company/business name column matched this row')
       const emails = [data.personal_email, data.company_email].filter(Boolean) as string[]
-      const domain = domainFromUrl(data.website ?? '')
-      if (emails.some((e) => isSuppressed(sup, e)) || (domain && isSuppressed(sup, undefined, domain))) {
-        noteSuppressed(`${data.company_name}: on the DNC list`)
-        continue
-      }
-      if (dnc) {
-        const d = checkDnc(dnc, { names: [data.company_name], brand: data.franchise_brand || undefined, city: data.city, state: data.state })
-        if (d.action === 'drop') { noteSuppressed(`${data.company_name}: ${d.reason}`); continue }
-      }
-      // Both lists screen on phone too, and suppression entries with a business
-      // name screen on name — the same coverage the search applies.
-      const phones = [normPhone(data.phone ?? ''), normPhone(data.contact_phone ?? '')].filter(Boolean)
-      if (phones.some((p) => sup.phones?.has(p))) {
-        noteSuppressed(`${data.company_name}: on the DNC list`)
-        continue
-      }
-      if (sup.names?.length) {
-        const s = checkDnc(sup.names, { names: [data.company_name], brand: data.franchise_brand || undefined, city: data.city, state: data.state })
-        if (s.action === 'drop') { noteSuppressed(`${data.company_name}: on the suppression list`); continue }
-      }
+      const block = trackerDncBlock(data, dnc, sup)
+      if (block) { noteSuppressed(`${data.company_name}: ${block}`); continue }
       // A LEAD ID in the sheet is the row's identity: it wins over the name/phone keys.
       let existing: { id: number } | undefined
       if (data.ext_lead_id) {
