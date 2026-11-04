@@ -33,6 +33,17 @@ interface Lead {
   website: string
   linkedin_url: string
   facebook_url: string
+  ext_lead_id: string
+  domain: string
+  est_15_employees: string
+  email_status: string
+  email_source: string
+  company_linkedin_url: string
+  contact_facebook_url: string
+  bbb_url: string
+  chamber_url: string
+  confidence: string
+  automated_flags: string
   source: string
   notes: string
   stage: string
@@ -44,14 +55,51 @@ interface Lead {
 interface HistoryEntry { from_stage: string | null; to_stage: string; source: string; changed_at: string }
 interface ImportSummary { rows: number; added: number; updated: number; skippedSuppressed: number; suppressedReasons: string[]; errors: { row: number; message: string }[] }
 
-const FIELDS: [keyof Lead, string][] = [
-  ['company_name', 'Company'], ['segment', 'Segment / niche'], ['franchise_brand', 'Brand'],
-  ['contact_name', 'Contact'], ['contact_title', 'Title'], ['personal_email', 'Personal email'],
-  ['company_email', 'Company email'], ['phone', 'Phone'], ['contact_phone', 'Contact phone (cell / landline)'],
-  ['address', 'Address'], ['city', 'City'], ['state', 'State'], ['zip', 'ZIP'],
-  ['website', 'Website'], ['linkedin_url', 'LinkedIn URL'], ['facebook_url', 'Facebook URL'],
-  ['source', 'Source'], ['notes', 'Notes'],
+type LeadField = keyof Lead
+/** 'addressLine' is the combined Address/City/State/ZIP row: one line, four stored fields. */
+type FieldSpec = [LeadField, string] | 'addressLine'
+
+const asUrl = (v: string) => (/^https?:\/\//i.test(v) ? v : `https://${v}`)
+
+/**
+ * The lead detail groups, in John's order (his annotated mock used colors only to
+ * tell the groups apart — the app keeps its own styling). Every stored field is here,
+ * so the detail form reads and saves the whole lead.
+ */
+const GROUPS: { title: string; fields: FieldSpec[] }[] = [
+  {
+    title: 'COMPANY INFORMATION',
+    fields: [
+      ['ext_lead_id', 'Lead ID'], ['company_name', 'Company name'], ['segment', 'Niche'], ['franchise_brand', 'Franchise brand'],
+      ['company_email', 'Company email'], ['phone', 'Phone'], 'addressLine',
+      ['website', 'Website'], ['domain', 'Domain'], ['est_15_employees', 'Estimate 15 or more employees'],
+      ['confidence', 'Confidence score'], ['source', 'Source'],
+    ],
+  },
+  {
+    title: 'CONTACT INFORMATION',
+    fields: [
+      ['contact_name', "Contact's name"], ['contact_title', "Contact's title"], ['contact_phone', 'Contact phone'],
+      ['personal_email', "Contact's email"], ['email_status', 'Email status'], ['email_source', 'Email source'],
+    ],
+  },
+  {
+    title: 'SOCIAL MEDIA',
+    fields: [
+      ['company_linkedin_url', 'Company LinkedIn URL'], ['facebook_url', 'Company Facebook URL'],
+      ['linkedin_url', "Contact person's LinkedIn URL"], ['contact_facebook_url', "Contact personal's Facebook URL"],
+      ['bbb_url', 'BBB URL'], ['chamber_url', 'Chamber of Commerce URL'],
+    ],
+  },
+  { title: 'NOTES', fields: [['notes', 'Notes']] },
+  { title: 'AUTOMATED FLAGS', fields: [['automated_flags', 'Automated flags']] },
 ]
+
+const URL_FIELDS = new Set<LeadField>(['website', 'domain', 'company_linkedin_url', 'facebook_url', 'linkedin_url', 'contact_facebook_url', 'bbb_url', 'chamber_url'])
+const WIDE_FIELDS = new Set<LeadField>(['notes', 'automated_flags'])
+
+const ALL_FIELDS: LeadField[] = GROUPS.flatMap((g) =>
+  g.fields.flatMap((f) => (f === 'addressLine' ? (['address', 'city', 'state', 'zip'] as LeadField[]) : [f[0]])))
 const PAGE = 100
 
 const badgeClass = (stage: string) =>
@@ -75,6 +123,8 @@ export function Tracker() {
   const [draft, setDraft] = useState<Partial<Lead> | null>(null)
   const [adding, setAdding] = useState(false)
   const [newLead, setNewLead] = useState<Partial<Lead>>({})
+  const [pendingCampaignId, setPendingCampaignId] = useState<number | null>(null)
+  const [pendingLeadId, setPendingLeadId] = useState<number | null>(null)
 
   const campaign = campaigns?.find((c) => c.id === openCampaignId) ?? null
 
@@ -83,6 +133,16 @@ export function Tracker() {
       .then(async (r) => { const j = await r.json(); if (!r.ok) throw new Error(j.error); setCampaigns(j.campaigns) })
       .catch((e) => setError(e.message))
   useEffect(() => { loadCampaigns() }, [])
+
+  // Deep links (e.g. from the Calls page): /tracker?campaign_id=N&lead=M opens
+  // that campaign, and that lead's details, once both have loaded.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const cid = Number(params.get('campaign_id'))
+    const lid = Number(params.get('lead'))
+    if (Number.isInteger(cid) && cid > 0) setPendingCampaignId(cid)
+    if (Number.isInteger(lid) && lid > 0) setPendingLeadId(lid)
+  }, [])
 
   const loadLeads = (campaignId: number) =>
     fetch(`/api/tracker?campaign_id=${campaignId}`)
@@ -155,10 +215,24 @@ export function Tracker() {
     }
   }
 
+  useEffect(() => {
+    if (pendingCampaignId == null || !campaigns) return
+    const c = campaigns.find((x) => x.id === pendingCampaignId)
+    setPendingCampaignId(null)
+    if (c) openCampaign(c)
+  }, [campaigns, pendingCampaignId])
+
+  useEffect(() => {
+    if (pendingLeadId == null || !leads) return
+    const l = leads.find((x) => x.id === pendingLeadId)
+    setPendingLeadId(null)
+    if (l) toggleOpen(l)
+  }, [leads, pendingLeadId])
+
   const saveDraft = async (l: Lead) => {
     if (!draft) return
     const fields: Record<string, string> = {}
-    for (const [k] of FIELDS) fields[k] = String(draft[k] ?? '')
+    for (const k of ALL_FIELDS) fields[k] = String(draft[k] ?? '')
     await patch(l.id, {
       fields,
       skips: { skip_website_form: !!draft.skip_website_form, skip_facebook_dm: !!draft.skip_facebook_dm },
@@ -196,26 +270,56 @@ export function Tracker() {
     load()
   }
 
-  const form = (values: Partial<Lead>, set: (v: Partial<Lead>) => void, showSkips: boolean) => (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 10 }}>
-      {FIELDS.map(([k, label]) => (
-        <label key={k} className="small" style={{ display: 'block' }}>
-          <span className="muted">{label}</span>
-          <input value={String(values[k] ?? '')} onChange={(e) => set({ ...values, [k]: e.target.value })} style={{ width: '100%' }} />
-        </label>
-      ))}
-      {showSkips && (
-        <div className="small" style={{ display: 'flex', flexDirection: 'column', gap: 6, justifyContent: 'flex-end' }}>
-          <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <input type="checkbox" checked={!!values.skip_website_form} onChange={(e) => set({ ...values, skip_website_form: e.target.checked })} />
-            No website form — skip stage 8
-          </label>
-          <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <input type="checkbox" checked={!!values.skip_facebook_dm} onChange={(e) => set({ ...values, skip_facebook_dm: e.target.checked })} />
-            No Facebook page — skip stage 9
-          </label>
+  const fieldCell = (values: Partial<Lead>, set: (v: Partial<Lead>) => void, k: LeadField, label: string) => {
+    const v = String(values[k] ?? '')
+    return (
+      <label className="small" style={{ display: 'block' }}>
+        <span className="muted">{label}</span>
+        {WIDE_FIELDS.has(k) ? (
+          <textarea value={v} rows={3} onChange={(e) => set({ ...values, [k]: e.target.value })} style={{ width: '100%' }} />
+        ) : (
+          <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input value={v} onChange={(e) => set({ ...values, [k]: e.target.value })} style={{ flex: 1, width: '100%' }} />
+            {URL_FIELDS.has(k) && v.trim() !== '' && (
+              <a href={asUrl(v.trim())} target="_blank" rel="noreferrer" title={`Open ${label}`}>↗</a>
+            )}
+          </span>
+        )}
+      </label>
+    )
+  }
+
+  /** The grouped field form (Company / Contact / Social / Notes / Flags), used by Add and Details. */
+  const groupedForm = (values: Partial<Lead>, set: (v: Partial<Lead>) => void) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {GROUPS.map((g) => (
+        <div key={g.title}>
+          <div style={{ fontWeight: 700, letterSpacing: '.05em', fontSize: 12, marginBottom: 8 }}>{g.title}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 10 }}>
+            {g.fields.map((f) => {
+              if (f === 'addressLine') {
+                return (
+                  <div key="addressLine" className="small" style={{ gridColumn: '1 / -1' }}>
+                    <span className="muted">Address, City, State, ZIP</span>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input placeholder="Address" value={String(values.address ?? '')} onChange={(e) => set({ ...values, address: e.target.value })} style={{ flex: 3 }} />
+                      <input placeholder="City" value={String(values.city ?? '')} onChange={(e) => set({ ...values, city: e.target.value })} style={{ flex: 2 }} />
+                      <input placeholder="State" value={String(values.state ?? '')} onChange={(e) => set({ ...values, state: e.target.value })} style={{ flex: '0 0 72px' }} />
+                      <input placeholder="ZIP" value={String(values.zip ?? '')} onChange={(e) => set({ ...values, zip: e.target.value })} style={{ flex: '0 0 104px' }} />
+                    </div>
+                  </div>
+                )
+              }
+              const [k, label] = f
+              return (
+                <div key={k} style={WIDE_FIELDS.has(k) ? { gridColumn: '1 / -1' } : undefined}>
+                  {fieldCell(values, set, k, label)}
+                </div>
+              )
+            })}
+          </div>
         </div>
-      )}
+      ))}
     </div>
   )
 
@@ -229,7 +333,7 @@ export function Tracker() {
             <button className="btn ghost" onClick={() => setCreating(!creating)}>{creating ? 'Cancel' : 'New campaign'}</button>
           </div>
           <div className="small muted" style={{ marginTop: 8 }}>
-            A campaign holds the leads being worked. Its type — Email outreach or LinkedIn outreach — is picked
+            A campaign holds the leads being worked. Its type — Email outreach or DM LinkedIn — is picked
             when the campaign is created, and every lead in it follows that type&apos;s stage ladder.
           </div>
           {creating && (
@@ -292,12 +396,13 @@ export function Tracker() {
           <button className="btn ghost" onClick={() => setAdding(!adding)}>{adding ? 'Cancel' : 'Add a lead'}</button>
         </div>
         <div className="small muted" style={{ marginTop: 8 }}>
-          Importing matches rows on company name + phone (email as a fallback), inside this campaign only, and only refreshes contact details —
+          Importing matches rows on LEAD ID first when the sheet carries one, otherwise on company name + phone
+          (email as a fallback), inside this campaign only, and only refreshes contact details —
           a lead&apos;s stage is never changed by an import. Rows on the DNC list are skipped.
         </div>
         {adding && (
           <div style={{ marginTop: 14 }}>
-            {form(newLead, setNewLead, false)}
+            {groupedForm(newLead, setNewLead)}
             <div className="row" style={{ marginTop: 10 }}>
               <button className="btn" onClick={addLead}>Add lead</button>
             </div>
@@ -366,15 +471,33 @@ export function Tracker() {
                   open && draft ? (
                     <tr key={`${l.id}-detail`}>
                       <td colSpan={11} style={{ whiteSpace: 'normal', maxWidth: 'none', background: 'var(--panel-2)' }}>
-                        <div className="small muted" style={{ marginBottom: 10 }}>
-                          Campaign: {campaign.name} · {campaignLabel(campaign.type)}
+                        <div className="row" style={{ alignItems: 'center', marginBottom: 10 }}>
+                          <span className="small muted">Campaign: {campaign.name} · {campaignLabel(campaign.type)}</span>
+                          <span className={`badge ${badgeClass(l.stage)}`}>{stageLabel(l.stage)}</span>
+                          <span className="small muted">in stage since {new Date(l.stage_updated_at).toLocaleDateString()}</span>
+                          {next && <button className="ghost" title={`Next: ${stageLabel(next)}`} onClick={() => patch(l.id, { advance: true })}>Advance ▸ {stageLabel(next)}</button>}
+                          <select value="" title="Set stage / outcome" onChange={(e) => { if (e.target.value) patch(l.id, { stage: e.target.value }) }} style={{ maxWidth: 150 }}>
+                            <option value="">Set stage…</option>
+                            {stagesForCampaign(campaign.type).map((s) => <option key={s} value={s}>{stageLabel(s)}</option>)}
+                            {OUTCOMES.map((s) => <option key={s} value={s}>{stageLabel(s)}</option>)}
+                          </select>
                         </div>
-                        {form(draft, setDraft, true)}
-                        <div className="row" style={{ marginTop: 10, alignItems: 'center' }}>
-                          <button className="btn" onClick={() => saveDraft(l)}>Save changes</button>
-                          <span className="small muted">
+                        <div className="checks small" style={{ marginBottom: 14 }}>
+                          <label>
+                            <input type="checkbox" checked={!!draft.skip_website_form} onChange={(e) => setDraft({ ...draft, skip_website_form: e.target.checked })} />
+                            No website form — skip stage 8
+                          </label>
+                          <label>
+                            <input type="checkbox" checked={!!draft.skip_facebook_dm} onChange={(e) => setDraft({ ...draft, skip_facebook_dm: e.target.checked })} />
+                            No Facebook page — skip stage 9
+                          </label>
+                          <span className="muted">
                             Skipped for this lead: {[l.skip_website_form ? 'website form' : '', l.skip_facebook_dm ? 'Facebook DM' : ''].filter(Boolean).join(', ') || 'none'}
                           </span>
+                        </div>
+                        {groupedForm(draft, setDraft)}
+                        <div className="row" style={{ marginTop: 12 }}>
+                          <button className="btn" onClick={() => saveDraft(l)}>Save changes</button>
                         </div>
                         {(history[l.id] ?? []).length > 0 && (
                           <div className="small" style={{ marginTop: 12 }}>

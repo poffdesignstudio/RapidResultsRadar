@@ -12,7 +12,7 @@ import { loadDncRows, loadSuppressionSets } from './stores.js'
 /**
  * The Campaign Tracker: named campaigns hold the leads Leah works through the outreach ladder
  * in src/tracker/stages.ts. A campaign carries one of the two types (EMAIL = "Email outreach",
- * LINKEDIN = "LinkedIn outreach"), chosen when the campaign is created, and every lead inside
+ * LINKEDIN = "DM LinkedIn"), chosen when the campaign is created, and every lead inside
  * it follows that type's ladder. Separate from the search `leads` table — these rows carry a
  * stage, and the stage (plus its history) belongs to the tracker alone: CSV imports refresh
  * contact data, never the stage.
@@ -45,6 +45,17 @@ export interface TrackerLead {
   website: string
   linkedin_url: string
   facebook_url: string
+  ext_lead_id: string
+  domain: string
+  est_15_employees: string
+  email_status: string
+  email_source: string
+  company_linkedin_url: string
+  contact_facebook_url: string
+  bbb_url: string
+  chamber_url: string
+  confidence: string
+  automated_flags: string
   source: string
   notes: string
   stage: string
@@ -60,12 +71,16 @@ export const TRACKER_FIELDS = [
   'company_name', 'segment', 'franchise_brand', 'contact_name', 'contact_title', 'personal_email',
   'company_email', 'phone', 'contact_phone', 'address', 'city', 'state', 'zip', 'website',
   'linkedin_url', 'facebook_url', 'source', 'notes',
+  'ext_lead_id', 'domain', 'est_15_employees', 'email_status', 'email_source', 'company_linkedin_url',
+  'contact_facebook_url', 'bbb_url', 'chamber_url', 'confidence', 'automated_flags',
 ] as const
 export type TrackerField = (typeof TRACKER_FIELDS)[number]
 
 const SELECT = `SELECT id::int AS id, campaign_id::int AS campaign_id, company_name, segment, franchise_brand, contact_name, contact_title,
   personal_email, company_email, phone, contact_phone, address, city, state, zip, website,
-  linkedin_url, facebook_url, source, notes, stage, stage_updated_at, skip_website_form,
+  linkedin_url, facebook_url, ext_lead_id, domain, est_15_employees, email_status, email_source,
+  company_linkedin_url, contact_facebook_url, bbb_url, chamber_url, confidence, automated_flags,
+  source, notes, stage, stage_updated_at, skip_website_form,
   skip_facebook_dm, created_at, updated_at FROM tracker_leads`
 
 const CAMPAIGN_SELECT = `SELECT c.id::int AS id, c.name, c.type, count(l.id)::int AS lead_count, c.created_at, c.updated_at
@@ -224,30 +239,44 @@ export async function advanceTrackerLead(id: number): Promise<TrackerLead> {
 /**
  * Header aliases for Leah's spreadsheet, most specific first. Headers are compared with
  * spaces, underscores and punctuation removed, so "Business Name", "business_name" and
- * "BusinessName" all match. The Radar sheet shape (company_name, contact_email, ...) is covered.
+ * "BusinessName" all match — and so do John's exact sheet headers, apostrophes and all
+ * ("CONTACT'S EMAIL" -> "contactsemail", "CONTACT PERSON'S  LINKEDIN URL" ->
+ * "contactpersonslinkedinurl"). The Radar sheet shape (company_name, contact_email, ...)
+ * is covered too.
  */
 const HEADER_FIELDS: [TrackerField, string[]][] = [
-  ['linkedin_url', ['linkedincontacturl', 'linkedinurl', 'linkedin', 'linkedincompanyurl', 'linkedinprofile']],
-  ['personal_email', ['personalemail', 'contactemail', 'owneremail', 'directemail', 'email', 'emailaddress']],
+  ['ext_lead_id', ['leadid']],
+  ['company_linkedin_url', ['companylinkedinurl', 'linkedincompanyurl']],
+  ['linkedin_url', ['contactpersonslinkedinurl', 'contactpersonlinkedinurl', 'linkedincontacturl', 'contactlinkedinurl', 'linkedinurl', 'linkedin', 'linkedinprofile']],
+  ['contact_facebook_url', ['contactpersonalsfacebookurl', 'contactpersonsfacebookurl', 'contactpersonalfacebookurl', 'contactfacebookurl', 'personalfacebookurl']],
+  ['facebook_url', ['companyfacebookurl', 'facebookurl', 'facebookpage', 'facebook']],
+  ['personal_email', ['contactsemail', 'personalemail', 'contactemail', 'owneremail', 'directemail', 'email', 'emailaddress']],
   ['company_email', ['companyemail', 'businessemail', 'genericemail', 'infoemail', 'officeemail']],
+  ['email_status', ['emailstatus']],
+  ['email_source', ['emailsource']],
   ['contact_phone', ['contactphone', 'cellphone', 'cell', 'mobilephone', 'mobile', 'directphone', 'landline', 'personalphone']],
   ['phone', ['phone', 'phonenumber', 'businessphone', 'companyphone', 'mainphone', 'telephonenumber', 'telephone']],
   ['company_name', ['companyname', 'businessname', 'business', 'company', 'clientname', 'name']],
   ['segment', ['segment', 'niche', 'industry', 'category']],
   ['franchise_brand', ['franchisebrand', 'brand']],
-  ['contact_name', ['contactname', 'contact', 'ownername', 'owner', 'decisionmaker', 'contactperson', 'fullname']],
-  ['contact_title', ['contacttitle', 'title', 'jobtitle', 'role']],
+  ['contact_name', ['contactsname', 'contactname', 'contact', 'ownername', 'owner', 'decisionmaker', 'contactperson', 'fullname']],
+  ['contact_title', ['contactstitle', 'contacttitle', 'title', 'jobtitle', 'role']],
   ['address', ['address', 'streetaddress', 'street', 'mailingaddress']],
   ['city', ['city']],
   ['state', ['state']],
   ['zip', ['zip', 'zipcode', 'postalcode']],
   ['website', ['website', 'websiteurl', 'site', 'url', 'webaddress']],
-  ['facebook_url', ['facebookurl', 'facebookpage', 'facebook']],
+  ['domain', ['domain']],
+  ['est_15_employees', ['estimate15ormoreemployees', 'estimate15ormoreemployee', 'est15ormoreemployees', 'employeeestimate']],
+  ['bbb_url', ['bbburl', 'bbb']],
+  ['chamber_url', ['chamberofcommerceurl', 'chamberurl']],
+  ['confidence', ['confidencescore', 'confidence']],
+  ['automated_flags', ['automatedflags', 'flags']],
   ['source', ['source']],
   ['notes', ['notes', 'note', 'comments', 'comment']],
 ]
 
-function mapRow(raw: Record<string, string>): Partial<Record<TrackerField, string>> {
+export function mapTrackerRow(raw: Record<string, string>): Partial<Record<TrackerField, string>> {
   const byNorm = new Map<string, string>()
   for (const [h, v] of Object.entries(raw)) {
     const n = h.toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -276,11 +305,11 @@ export interface TrackerImportSummary {
 
 /**
  * Leah's spreadsheet, merged into one campaign. Rows match an existing lead IN THE SAME
- * CAMPAIGN on the dedupe key (name + phone, email as fallback) and only refresh
- * business/contact fields — the stage, outcome, skip flags and stage history are never
- * touched, and any campaign column in the sheet is ignored: the campaign comes from where
- * the import is run. Rows on the DNC list (a "drop" match or a suppression match) are
- * skipped and counted.
+ * CAMPAIGN first on the sheet's LEAD ID when the row carries one, then on the dedupe key
+ * (name + phone, email as fallback), and only refresh business/contact fields — the stage,
+ * outcome, skip flags and stage history are never touched, and any campaign column in the
+ * sheet is ignored: the campaign comes from where the import is run. Rows on the DNC list
+ * (a "drop" match or a suppression match) are skipped and counted.
  */
 export async function importTrackerCsv(text: string, fileName: string, campaignId: number): Promise<TrackerImportSummary> {
   return importTrackerRows(parseCsv(text), fileName, campaignId)
@@ -303,7 +332,7 @@ export async function importTrackerRows(raw: Record<string, string>[], fileName:
     if (summary.suppressedReasons.length < 50 && !summary.suppressedReasons.includes(reason)) summary.suppressedReasons.push(reason)
   }
   for (let i = 0; i < raw.length; i++) {
-    const data = mapRow(raw[i])
+    const data = mapTrackerRow(raw[i])
     try {
       if (!data.company_name) throw new Error('No company/business name column matched this row')
       const emails = [data.personal_email, data.company_email].filter(Boolean) as string[]
@@ -316,8 +345,16 @@ export async function importTrackerRows(raw: Record<string, string>[], fileName:
         const d = checkDnc(dnc, { names: [data.company_name], brand: data.franchise_brand || undefined, city: data.city, state: data.state })
         if (d.action === 'drop') { noteSuppressed(`${data.company_name}: ${d.reason}`); continue }
       }
-      const key = dedupeKeyFor(data)
-      let existing = await q1<{ id: number }>('SELECT id::int AS id FROM tracker_leads WHERE campaign_id=$1 AND dedupe_key=$2', [campaignId, key])
+      // A LEAD ID in the sheet is the row's identity: it wins over the name/phone keys.
+      let existing: { id: number } | undefined
+      if (data.ext_lead_id) {
+        existing = await q1<{ id: number }>(
+          'SELECT id::int AS id FROM tracker_leads WHERE campaign_id=$1 AND ext_lead_id=$2', [campaignId, data.ext_lead_id])
+      }
+      if (!existing) {
+        const key = dedupeKeyFor(data)
+        existing = await q1<{ id: number }>('SELECT id::int AS id FROM tracker_leads WHERE campaign_id=$1 AND dedupe_key=$2', [campaignId, key])
+      }
       if (!existing && emails.length) {
         existing = await q1<{ id: number }>(
           'SELECT id::int AS id FROM tracker_leads WHERE campaign_id=$1 AND (lower(personal_email) = ANY($2) OR lower(company_email) = ANY($2)) LIMIT 1',
@@ -341,7 +378,44 @@ export async function importTrackerRows(raw: Record<string, string>[], fileName:
   return summary
 }
 
-export const TRACKER_EXPORT_COLUMNS = [...TRACKER_FIELDS, 'campaign_name', 'campaign_type', 'stage', 'stage_updated_at'] as const
+/**
+ * The export sheet shape is John's: his 28 columns, his exact headers, in his order —
+ * the same headers the import maps — followed by the campaign and stage columns.
+ * (CONTACT PERSON'S  LINKEDIN URL keeps the double space of his sheet; the import
+ * normalization ignores spacing, so an exported file re-imports cleanly.)
+ */
+export const SHEET_EXPORT_FIELDS: [TrackerField, string][] = [
+  ['ext_lead_id', 'LEAD ID'],
+  ['company_name', 'COMPANY NAME'],
+  ['segment', 'NICHE'],
+  ['franchise_brand', 'FRANCHISE BRAND'],
+  ['address', 'ADDRESS'],
+  ['city', 'CITY'],
+  ['state', 'STATE'],
+  ['zip', 'ZIP'],
+  ['phone', 'PHONE'],
+  ['website', 'WEBSITE'],
+  ['domain', 'DOMAIN'],
+  ['company_email', 'COMPANY EMAIL'],
+  ['est_15_employees', 'ESTIMATE 15 or MORE EMPLOYEES'],
+  ['contact_name', "CONTACT'S NAME"],
+  ['contact_title', "CONTACT'S TITLE"],
+  ['personal_email', "CONTACT'S EMAIL"],
+  ['email_status', 'EMAIL STATUS'],
+  ['email_source', 'EMAIL SOURCE'],
+  ['contact_phone', 'CONTACT PHONE'],
+  ['company_linkedin_url', 'COMPANY LINKEDIN URL'],
+  ['linkedin_url', "CONTACT PERSON'S  LINKEDIN URL"],
+  ['contact_facebook_url', "CONTACT PERSONAL'S FACEBOOK URL"],
+  ['bbb_url', 'BBB URL'],
+  ['chamber_url', 'CHAMBER OF COMMERCE URL'],
+  ['confidence', 'CONFIDENCE SCORE'],
+  ['automated_flags', 'AUTOMATED FLAGS'],
+  ['notes', 'NOTES'],
+  ['facebook_url', 'COMPANY FACEBOOK URL'],
+]
+
+export const TRACKER_EXPORT_COLUMNS = [...SHEET_EXPORT_FIELDS.map(([, h]) => h), 'campaign_name', 'campaign_type', 'stage', 'stage_updated_at'] as const
 
 /** One campaign's leads as flat rows for the CSV export, campaign name and type included. */
 export async function trackerExportRows(campaignId: number): Promise<Record<string, string>[]> {
@@ -349,11 +423,34 @@ export async function trackerExportRows(campaignId: number): Promise<Record<stri
   const leads = await listTrackerLeads(campaignId)
   return leads.map((l) => {
     const row: Record<string, string> = {}
-    for (const f of TRACKER_FIELDS) row[f] = l[f]
+    for (const [f, h] of SHEET_EXPORT_FIELDS) row[h] = l[f]
     row.campaign_name = campaign.name
     row.campaign_type = campaign.type
     row.stage = l.stage
     row.stage_updated_at = l.stage_updated_at
     return row
   })
+}
+
+export interface CallListEntry {
+  id: number
+  campaign_id: number
+  campaign_name: string
+  campaign_type: Campaign
+  company_name: string
+  contact_name: string
+  phone: string
+  contact_phone: string
+  stage_updated_at: string
+}
+
+/** Every lead at CALL OUTREACH, across all campaigns, longest-waiting first — the Calls page. */
+export async function listCallList(): Promise<CallListEntry[]> {
+  const rows = await q<CallListEntry & { stage_updated_at: Date | string }>(
+    `SELECT l.id::int AS id, l.campaign_id::int AS campaign_id, c.name AS campaign_name, c.type AS campaign_type,
+       l.company_name, l.contact_name, l.phone, l.contact_phone, l.stage_updated_at
+     FROM tracker_leads l JOIN tracker_campaigns c ON c.id = l.campaign_id
+     WHERE l.stage = 'CALL OUTREACH'
+     ORDER BY l.stage_updated_at, l.company_name`)
+  return rows.map((r) => ({ ...r, stage_updated_at: iso(r.stage_updated_at) }))
 }
