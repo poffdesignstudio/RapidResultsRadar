@@ -158,10 +158,13 @@ export function LeadsTable({ rows, onChange, onDeleteSelected }: {
           <thead>
             <tr>
               {onDeleteSelected && (
-                <th style={{ width: 28 }}>
-                  <input ref={masterRef} type="checkbox" aria-label="Select all leads on this page"
-                    checked={pageRows.length > 0 && pageSelected === pageRows.length}
-                    onChange={(e) => togglePage(e.target.checked)} />
+                <th>
+                  <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
+                    <input ref={masterRef} type="checkbox" aria-label="Select all leads on this page"
+                      checked={pageRows.length > 0 && pageSelected === pageRows.length}
+                      onChange={(e) => togglePage(e.target.checked)} />
+                    Select all
+                  </label>
                 </th>
               )}
               {cols.map((c) => (
