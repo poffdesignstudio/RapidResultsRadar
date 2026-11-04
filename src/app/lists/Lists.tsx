@@ -71,18 +71,18 @@ function ListSection({ kind, title, blurb, data, replaceOnUpload, notify, reload
   }
 
   return (
-    <div className="panel">
-      <h2 style={{ marginTop: 0 }}>{title} ({total})</h2>
-      <p className="small muted">{blurb}</p>
-      <div className="row">
+    <div className="panel" style={{ marginBottom: 0 }}>
+      <h2 style={{ marginTop: 0, textAlign: 'center' }}>{title} ({total})</h2>
+      <p className="small muted" style={{ textAlign: 'center' }}>{blurb}</p>
+      <div className="row" style={{ justifyContent: 'center' }}>
         <textarea value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="one entry per line — a business name, an email, @domain.com, or a phone number" rows={3} style={{ minWidth: 340, flex: 1 }} />
       </div>
-      <div className="row" style={{ marginTop: 10 }}>
+      <div className="row" style={{ marginTop: 10, justifyContent: 'center' }}>
         <button onClick={addTyped} disabled={!typed.trim()}>Add</button>
         <label className="btn ghost" style={{ cursor: 'pointer' }}>Upload CSV or Excel<input type="file" accept={ACCEPT} onChange={upload} style={{ display: 'none' }} /></label>
         {total > 0 && <button className="danger" onClick={clear}>Clear list</button>}
       </div>
-      {data && total === 0 && <p className="muted" style={{ marginTop: 12 }}>No entries yet.</p>}
+      {data && total === 0 && <p className="muted" style={{ marginTop: 12, textAlign: 'center' }}>No entries yet.</p>}
       {data && total > 0 && (
         <div className="gridwrap" style={{ marginTop: 12, maxHeight: 360 }}>
           <table className="grid">
@@ -114,24 +114,26 @@ export function Lists() {
   return (
     <>
       {msg && <div className={`alert ${msg.ok ? 'ok' : 'bad'}`}>{msg.text}</div>}
-      <ListSection
-        kind="client"
-        title="Existing clients"
-        blurb="Businesses that already buy from Rapid Results. Searches, exports and campaign imports screen every lead against this list and leave matches out — matched on business name (franchise brands match on brand plus city and state), email, or phone. Uploading a file replaces the whole list; a spreadsheet can be a full lead sheet or a simple list of names."
-        data={lists?.client ?? null}
-        replaceOnUpload
-        notify={notify}
-        reload={load}
-      />
-      <ListSection
-        kind="suppression"
-        title="Suppression list"
-        blurb="People and businesses who said leave them alone. They are left out of every search, export and campaign import — matched on email, a whole domain (@domain.com), business name, or phone. Uploads and pasted lines add to the list; nothing is removed unless you remove it."
-        data={lists?.suppression ?? null}
-        replaceOnUpload={false}
-        notify={notify}
-        reload={load}
-      />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(430px, 100%), 1fr))', gap: 16, alignItems: 'start' }}>
+        <ListSection
+          kind="client"
+          title="EXISTING CLIENTS"
+          blurb="Businesses that already buy from Rapid Results. Searches, exports and campaign imports screen every lead against this list and leave matches out — matched on business name (franchise brands match on brand plus city and state), email, or phone. Uploading a file replaces the whole list; a spreadsheet can be a full lead sheet or a simple list of names."
+          data={lists?.client ?? null}
+          replaceOnUpload
+          notify={notify}
+          reload={load}
+        />
+        <ListSection
+          kind="suppression"
+          title="SUPPRESSION LIST"
+          blurb="People and businesses who said leave them alone. They are left out of every search, export and campaign import — matched on email, a whole domain (@domain.com), business name, or phone. Uploads and pasted lines add to the list; nothing is removed unless you remove it."
+          data={lists?.suppression ?? null}
+          replaceOnUpload={false}
+          notify={notify}
+          reload={load}
+        />
+      </div>
     </>
   )
 }

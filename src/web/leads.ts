@@ -73,6 +73,19 @@ export async function updateLeadCell(leadId: string, col: string, value: string,
   await q('INSERT INTO lead_changes (lead_id, col, old_value, new_value, source) VALUES ($1,$2,$3,$4,$5)', [leadId, col, old.v ?? '', value, source])
 }
 
+/**
+ * Permanently removes leads from the All leads pool by lead_id. Only the leads table is
+ * touched: the do-not-contact lists, campaigns and tracker data are never affected, and
+ * search views join on this table so a deleted lead drops out of them on its own.
+ * Returns how many leads were actually deleted.
+ */
+export async function deleteLeads(leadIds: string[]): Promise<number> {
+  const ids = [...new Set(leadIds.map((s) => String(s ?? '').trim()).filter(Boolean))]
+  if (!ids.length) return 0
+  const gone = await q<{ lead_id: string }>('DELETE FROM leads WHERE lead_id = ANY($1) RETURNING lead_id', [ids])
+  return gone.length
+}
+
 export interface ImportSummary {
   rows: number
   matched: number

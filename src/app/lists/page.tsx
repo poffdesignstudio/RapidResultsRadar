@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 export default function ListsPage() {
   return (
     <>
-      <h1>Do-not-contact &amp; suppression</h1>
+      <h1 style={{ textAlign: 'center' }}>DO NOT CONTACT &amp; SUPPRESSION</h1>
       <ConfigAlert showOptional={false} />
       {dbConfigured() ? <Lists /> : <p className="muted">These lists are stored in the database, which is not connected yet.</p>}
     </>
