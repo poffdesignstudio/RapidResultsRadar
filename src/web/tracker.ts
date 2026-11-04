@@ -283,8 +283,17 @@ export interface TrackerImportSummary {
  * skipped and counted.
  */
 export async function importTrackerCsv(text: string, fileName: string, campaignId: number): Promise<TrackerImportSummary> {
+  return importTrackerRows(parseCsv(text), fileName, campaignId)
+}
+
+/**
+ * The shared import pipeline. `raw` is header-keyed row objects from either a
+ * CSV (parseCsv) or the first worksheet of an Excel file (parseSheetRows) —
+ * both normalized to trimmed string values, so everything downstream (header
+ * mapping, dedupe, DNC screening) treats the two formats identically.
+ */
+export async function importTrackerRows(raw: Record<string, string>[], fileName: string, campaignId: number): Promise<TrackerImportSummary> {
   await requireTrackerCampaign(campaignId)
-  const raw = parseCsv(text)
   if (!raw.length) throw new Error('The file has no rows')
   const dnc = await loadDncRows()
   const sup = await loadSuppressionSets()

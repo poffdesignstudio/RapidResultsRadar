@@ -1,12 +1,11 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 interface Params {
   niche: string; city: string; state: string; zip: string; radius: number
   sources: { google: boolean; overture: boolean; nppes: boolean; cms: boolean; crawler: boolean }
 }
-interface Profile { id: number; name: string; params: Params }
 
 const DEFAULT: Params = {
   niche: 'home care', city: 'Charlotte', state: 'NC', zip: '', radius: 30,
@@ -24,13 +23,8 @@ export function SearchForm({ disabled }: { disabled: boolean }) {
   const router = useRouter()
   const [p, setP] = useState<Params>(DEFAULT)
   const [useZip, setUseZip] = useState(false)
-  const [profiles, setProfiles] = useState<Profile[]>([])
-  const [profileName, setProfileName] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-
-  const loadProfiles = () => fetch('/api/profiles').then((r) => (r.ok ? r.json() : [])).then(setProfiles).catch(() => {})
-  useEffect(() => { if (!disabled) loadProfiles() }, [disabled])
 
   const set = <K extends keyof Params>(k: K, v: Params[K]) => setP((x) => ({ ...x, [k]: v }))
   const body = () => ({ ...p, city: useZip ? '' : p.city, state: useZip ? '' : p.state, zip: useZip ? p.zip : '' })
@@ -39,47 +33,15 @@ export function SearchForm({ disabled }: { disabled: boolean }) {
     e.preventDefault()
     setBusy(true)
     setError('')
-    const res = await fetch('/api/searches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body(), profile: profileName || undefined }) })
+    const res = await fetch('/api/searches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body()) })
     const j = await res.json().catch(() => ({}))
     setBusy(false)
     if (!res.ok) return setError(j.error ?? 'Could not start the search')
     router.push(`/searches/${j.id}`)
   }
-  const saveProfile = async () => {
-    const name = profileName.trim() || window.prompt('Name for this search profile?')?.trim()
-    if (!name) return
-    const res = await fetch('/api/profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, params: body() }) })
-    if (!res.ok) return setError((await res.json()).error)
-    setProfileName(name)
-    loadProfiles()
-  }
-  const pickProfile = (id: string) => {
-    const pr = profiles.find((x) => String(x.id) === id)
-    if (!pr) return setProfileName('')
-    setP({ ...DEFAULT, ...pr.params, sources: { ...DEFAULT.sources, ...pr.params.sources } })
-    setUseZip(!!pr.params.zip)
-    setProfileName(pr.name)
-  }
-  const deleteProfile = async () => {
-    const pr = profiles.find((x) => x.name === profileName)
-    if (!pr || !window.confirm(`Delete the profile "${pr.name}"?`)) return
-    await fetch(`/api/profiles?id=${pr.id}`, { method: 'DELETE' })
-    setProfileName('')
-    loadProfiles()
-  }
 
   return (
     <form className="panel" onSubmit={start}>
-      <div className="row" style={{ marginBottom: 14 }}>
-        <label className="f">Saved profile
-          <select value={profiles.find((x) => x.name === profileName)?.id ?? ''} onChange={(e) => pickProfile(e.target.value)} disabled={disabled}>
-            <option value="">(none)</option>
-            {profiles.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-          </select>
-        </label>
-        <button type="button" className="ghost" onClick={saveProfile} disabled={disabled}>Save as profile</button>
-        {profiles.some((x) => x.name === profileName) && <button type="button" className="ghost" onClick={deleteProfile}>Delete profile</button>}
-      </div>
       <div className="row">
         <label className="f">Niche
           <input value={p.niche} onChange={(e) => set('niche', e.target.value)} placeholder="home care" style={{ width: 200 }} />

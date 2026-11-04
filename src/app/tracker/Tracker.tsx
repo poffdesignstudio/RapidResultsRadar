@@ -286,8 +286,8 @@ export function Tracker() {
         <div className="row" style={{ alignItems: 'center' }}>
           <a className="btn" href={`/api/tracker/export?campaign_id=${campaign.id}`}>Export campaign (CSV)</a>
           <label className="btn ghost" style={{ cursor: 'pointer' }}>
-            {busy ? 'Importing…' : 'Import spreadsheet (CSV)'}
-            <input type="file" accept=".csv,text/csv" onChange={importFile} style={{ display: 'none' }} disabled={busy} />
+            {busy ? 'Importing…' : 'Import spreadsheet (CSV or Excel)'}
+            <input type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={importFile} style={{ display: 'none' }} disabled={busy} />
           </label>
           <button className="btn ghost" onClick={() => setAdding(!adding)}>{adding ? 'Cancel' : 'Add a lead'}</button>
         </div>
