@@ -8,6 +8,7 @@ import { cmsHomeHealthProvider } from './providers/cmsHomeHealth.js'
 import { cmsOwnersProvider } from './providers/cmsOwners.js'
 import { clusterRecords } from './match/cluster.js'
 import { sharedDomains } from './match/franchise.js'
+import { normPhone } from './core/normalize.js'
 import { checkDnc, type DncRow } from './match/doNotContact.js'
 import { crawlSite, type CrawlCache } from './enrich/crawler.js'
 import { hasMx } from './enrich/emails.js'
@@ -119,13 +120,22 @@ export async function checkMailServers(leads: Lead[]): Promise<boolean> {
   return true
 }
 
-export interface Suppression { emails: Set<string>; domains: Set<string> }
+export interface Suppression {
+  emails: Set<string>
+  domains: Set<string>
+  /** Suppression-list entries that carry a business name, matched like named DNC rows. */
+  names?: DncRow[]
+  /** Phone numbers (last 10 digits) from both lists: a match screens the lead out. */
+  phones?: Set<string>
+  /** Total list entries the sets were built from, for the report line. */
+  entries?: number
+}
 
 export function isSuppressed(sup: Suppression, email?: string, domain?: string): boolean {
   return !!((email && sup.emails.has(email.toLowerCase())) || (domain && sup.domains.has(domain)) || (email && sup.domains.has(email.split('@')[1]?.toLowerCase())))
 }
 
-/** Picks contacts and emails, then applies the do-not-contact and suppression lists. */
+/** Picks contacts and emails, then screens against both do-not-contact lists. */
 export function finalizeLeads(leads: Lead[], area: SearchArea, dnc: DncRow[] | null, sup: Suppression) {
   const placeNames = area.places.map((p) => p.name)
   for (const l of leads) {
@@ -134,7 +144,7 @@ export function finalizeLeads(leads: Lead[], area: SearchArea, dnc: DncRow[] | n
     l.baseNotes ??= [...l.notes]
     l.flags = [...l.baseFlags]
     l.notes = [...l.baseNotes]
-    if (l.excluded?.startsWith('Existing client') || l.excluded === 'On the suppression list') delete l.excluded
+    if (l.excluded?.startsWith('Existing client') || l.excluded?.startsWith('On the suppression list')) delete l.excluded
     finalizeContact(l, config.email.guessForNamedPeople, placeNames)
   }
   let dropped = 0
@@ -146,11 +156,32 @@ export function finalizeLeads(leads: Lead[], area: SearchArea, dnc: DncRow[] | n
       if (r.action === 'flag') { l.flags.push(r.reason!); flagged++ }
     }
   }
-  for (const l of leads) if (isSuppressed(sup, l.fields.contact_email?.value, l.fields.domain?.value)) l.excluded ??= 'On the suppression list'
+  // The suppression list screens by name as well: its named entries run through the
+  // same matcher, with the reasons reworded so the lead is not called a client.
+  let suppressed = 0
+  const asSuppression = (s: string) => s
+    .replace(/^Existing client/, 'On the suppression list')
+    .replace(/^Name is close to existing client/, 'Name is close to a suppression-list entry')
+    .replace(/^Same brand as a client/, 'Same brand as a suppression-list entry')
+  if (sup.names?.length) {
+    for (const l of leads) {
+      const r = checkDnc(sup.names, { names: l.records.flatMap((x) => [x.name, ...(x.altNames ?? [])]), brand: l.brand?.brand, city: l.fields.city?.value, state: l.fields.state?.value })
+      if (r.action === 'drop' && !l.excluded) { l.excluded = asSuppression(r.reason!); suppressed++ }
+      if (r.action === 'flag') l.flags.push(asSuppression(r.reason!))
+    }
+  }
+  for (const l of leads) {
+    if (l.excluded) continue
+    const phone = normPhone(l.fields.phone?.value)
+    if (isSuppressed(sup, l.fields.contact_email?.value, l.fields.domain?.value) || (phone !== '' && !!sup.phones?.has(phone))) {
+      l.excluded = 'On the suppression list'
+      suppressed++
+    }
+  }
+  const clientCount = dnc?.length ?? 0
+  const totalEntries = sup.entries ?? clientCount + sup.emails.size + sup.domains.size + (sup.names?.length ?? 0)
   return {
-    dncLine: dnc
-      ? `Applied (${dnc.length} rows on the list): ${dropped} dropped as existing clients, ${flagged} flagged for review`
-      : 'NOT APPLIED: no do-not-contact list has been imported. Do not send these leads to Leia until it is.',
+    dncLine: `Screened against both lists (${clientCount} existing-client entries, ${totalEntries} entries on file in all): ${dropped} dropped as existing clients, ${flagged} flagged for review, ${suppressed} left out as suppressed`,
   }
 }
 
