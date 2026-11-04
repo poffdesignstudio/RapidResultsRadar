@@ -12,7 +12,14 @@ const READ_ONLY = new Set(['lead_id', 'source', 'source_id', 'date_found'])
 const LABELS: Record<string, string> = {
   company_name: 'Company', franchise_brand: 'Brand', contact_name: 'Contact', contact_title: 'Title', contact_email: 'Email',
   email_status: 'Email status', email_source: 'Email found by', hiring_signal: 'Hiring', review_status: 'Review', lead_id: 'Lead ID',
+  segment: 'Segment', city: 'City', state: 'State', phone: 'Phone', website: 'Website', confidence: 'Confidence',
+  flags: 'Flags', notes: 'Notes', source: 'Source', source_id: 'Source ID', date_found: 'Date found', address: 'Address',
+  zip: 'ZIP', domain: 'Domain', employee_estimate: 'Employee estimate', contact_phone: 'Contact phone',
+  linkedin_company_url: 'LinkedIn company URL', linkedin_contact_url: 'LinkedIn contact URL', facebook_url: 'Facebook URL',
+  bbb_url: 'BBB URL', chamber_url: 'Chamber URL', campaign_name: 'Campaign name', campaign_start: 'Campaign start',
 }
+/** Display label for a column header: explicit label, else the raw key spaced out with its first letter capitalized. */
+const headerLabel = (c: string) => LABELS[c] ?? ((s: string) => s.charAt(0).toUpperCase() + s.slice(1))(c.replace(/_/g, ' '))
 const QUICK: [string, string, (r: Row) => boolean][] = [
   ['all', 'All', () => true],
   ['email', 'Has email', (r) => !!r.contact_email],
@@ -158,8 +165,8 @@ export function LeadsTable({ rows, onChange, onDeleteSelected }: {
           <thead>
             <tr>
               {onDeleteSelected && (
-                <th>
-                  <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
+                <th style={{ textAlign: 'center' }}>
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                     <input ref={masterRef} type="checkbox" aria-label="Select all leads on this page"
                       checked={pageRows.length > 0 && pageSelected === pageRows.length}
                       onChange={(e) => togglePage(e.target.checked)} />
@@ -169,7 +176,7 @@ export function LeadsTable({ rows, onChange, onDeleteSelected }: {
               )}
               {cols.map((c) => (
                 <th key={c} onClick={() => setSort((s) => ({ col: c, dir: s.col === c ? (s.dir === 1 ? -1 : 1) : 1 }))}>
-                  {LABELS[c] ?? c.replace(/_/g, ' ')}{sort.col === c ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}
+                  {headerLabel(c)}{sort.col === c ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}
                 </th>
               ))}
             </tr>
@@ -178,7 +185,7 @@ export function LeadsTable({ rows, onChange, onDeleteSelected }: {
             {pageRows.map((r) => (
               <tr key={r.lead_id}>
                 {onDeleteSelected && (
-                  <td>
+                  <td style={{ textAlign: 'center' }}>
                     <input type="checkbox" aria-label={`Select ${r.company_name || r.lead_id}`}
                       checked={selected.has(r.lead_id)}
                       onClick={(e) => e.stopPropagation()}
