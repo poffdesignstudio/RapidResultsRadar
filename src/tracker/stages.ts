@@ -1,12 +1,12 @@
 /**
- * The Lead Tracker pipelines, in the order Leah works them (set by John, Nov 3 2026).
+ * The Campaign Tracker pipelines, in the order Leah works them (set by John, Nov 3 2026).
  * The tracker only records outreach Leah performs elsewhere; it never sends anything.
  *
- * A lead belongs to one campaign type, chosen when the lead is set up. Both campaign types
- * use the same ten outreach steps and the same outcome statuses. They differ only in which
- * channel block comes first: personal email or LinkedIn. The company-email tail, including
- * the final CALL OUTREACH step, is shared. Stored stage values are the exact uppercase names;
- * the UI shows them title-cased.
+ * Leads live inside a named campaign, and the campaign carries one of two types, chosen
+ * when the campaign is created. Both types use the same ten outreach steps and the same
+ * outcome statuses. They differ only in which channel block comes first: personal email or
+ * LinkedIn. The company-email tail, including the final CALL OUTREACH step, is shared.
+ * Stored stage values are the exact uppercase names; the UI shows them title-cased.
  */
 export const CAMPAIGNS = ['EMAIL', 'LINKEDIN'] as const
 export type Campaign = (typeof CAMPAIGNS)[number]
