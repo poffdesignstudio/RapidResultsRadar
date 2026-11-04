@@ -3,9 +3,17 @@ import { createTrackerLead, listTrackerLeads, type TrackerField } from '../../..
 
 export const dynamic = 'force-dynamic'
 
-export const GET = handle(async () => ({ leads: await listTrackerLeads() }))
+const campaignIdOf = (req: Request) => {
+  const id = Number(new URL(req.url).searchParams.get('campaign_id'))
+  if (!Number.isInteger(id) || id <= 0) throw new Error('Choose a campaign first (campaign_id is required)')
+  return id
+}
+
+export const GET = handle(async (req: Request) => ({ leads: await listTrackerLeads(campaignIdOf(req)) }))
 
 export const POST = handle(async (req: Request) => {
-  const body = (await req.json()) as Partial<Record<TrackerField, string>> & { campaign?: string }
-  return createTrackerLead(body)
+  const body = (await req.json()) as Partial<Record<TrackerField, string>> & { campaign_id?: number }
+  const campaignId = Number(body.campaign_id)
+  if (!Number.isInteger(campaignId) || campaignId <= 0) throw new Error('Choose a campaign first (campaign_id is required)')
+  return createTrackerLead(campaignId, body)
 })
