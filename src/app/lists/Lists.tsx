@@ -73,7 +73,11 @@ function ListSection({ kind, title, blurb, data, replaceOnUpload, notify, reload
   return (
     <div className="panel" style={{ marginBottom: 0 }}>
       <h2 style={{ marginTop: 0, textAlign: 'center' }}>{title} ({total})</h2>
-      <p className="small muted" style={{ textAlign: 'center' }}>{blurb}</p>
+      {/* Blurb is left-aligned (John, Nov 4). minHeight reserves the taller
+          (Existing Clients) blurb's height in both panels so the paste
+          textareas and everything below them start at the same level and
+          the two panels stay symmetrical. */}
+      <p className="small muted" style={{ textAlign: 'left', minHeight: '6lh' }}>{blurb}</p>
       <div className="row" style={{ justifyContent: 'center' }}>
         <textarea value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="one entry per line — a business name, an email, @domain.com, or a phone number" rows={3} style={{ minWidth: 340, flex: 1 }} />
       </div>
