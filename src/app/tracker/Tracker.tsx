@@ -1,12 +1,22 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import {
-  CAMPAIGNS, CAMPAIGN_LABELS, OUTCOMES, OUTREACH_STAGES, campaignShortLabel, isOutcome,
+  CAMPAIGNS, CAMPAIGN_LABELS, OUTCOMES, campaignLabel, campaignShortLabel, isOutcome,
   nextStage, stageLabel, stagesForCampaign, type Campaign,
 } from '../../tracker/stages'
 
+interface CampaignT {
+  id: number
+  name: string
+  type: Campaign
+  lead_count: number
+  created_at: string
+  updated_at: string
+}
+
 interface Lead {
   id: number
+  campaign_id: number
   company_name: string
   segment: string
   franchise_brand: string
@@ -25,7 +35,6 @@ interface Lead {
   facebook_url: string
   source: string
   notes: string
-  campaign: Campaign
   stage: string
   stage_updated_at: string
   skip_website_form: boolean
@@ -49,6 +58,10 @@ const badgeClass = (stage: string) =>
   stage === 'WON' ? 'verified' : stage === 'LOST' || stage === 'NO CONTACT' ? 'no' : isOutcome(stage) ? 'pending' : 'generic'
 
 export function Tracker() {
+  const [campaigns, setCampaigns] = useState<CampaignT[] | null>(null)
+  const [openCampaignId, setOpenCampaignId] = useState<number | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [newCampaign, setNewCampaign] = useState<{ name: string; type: Campaign }>({ name: '', type: 'EMAIL' })
   const [leads, setLeads] = useState<Lead[] | null>(null)
   const [error, setError] = useState('')
   const [summary, setSummary] = useState<ImportSummary | null>(null)
@@ -61,13 +74,47 @@ export function Tracker() {
   const [history, setHistory] = useState<Record<number, HistoryEntry[]>>({})
   const [draft, setDraft] = useState<Partial<Lead> | null>(null)
   const [adding, setAdding] = useState(false)
-  const [newLead, setNewLead] = useState<Partial<Lead>>({ campaign: 'EMAIL' })
+  const [newLead, setNewLead] = useState<Partial<Lead>>({})
 
-  const load = () =>
-    fetch('/api/tracker')
+  const campaign = campaigns?.find((c) => c.id === openCampaignId) ?? null
+
+  const loadCampaigns = () =>
+    fetch('/api/tracker/campaigns')
+      .then(async (r) => { const j = await r.json(); if (!r.ok) throw new Error(j.error); setCampaigns(j.campaigns) })
+      .catch((e) => setError(e.message))
+  useEffect(() => { loadCampaigns() }, [])
+
+  const loadLeads = (campaignId: number) =>
+    fetch(`/api/tracker?campaign_id=${campaignId}`)
       .then(async (r) => { const j = await r.json(); if (!r.ok) throw new Error(j.error); setLeads(j.leads) })
       .catch((e) => setError(e.message))
-  useEffect(() => { load() }, [])
+
+  const load = () => { if (openCampaignId) loadLeads(openCampaignId); loadCampaigns() }
+
+  const openCampaign = (c: CampaignT) => {
+    setOpenCampaignId(c.id)
+    setLeads(null)
+    setView('all')
+    setStageFilter('')
+    setFilter('')
+    setPage(0)
+    setOpenId(null)
+    setDraft(null)
+    setSummary(null)
+    setError('')
+    loadLeads(c.id)
+  }
+
+  const createCampaign = async () => {
+    setError('')
+    const res = await fetch('/api/tracker/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newCampaign) })
+    const j = await res.json().catch(() => ({}))
+    if (!res.ok) return setError(j.error ?? 'Could not create the campaign')
+    setCreating(false)
+    setNewCampaign({ name: '', type: 'EMAIL' })
+    await loadCampaigns()
+    openCampaign(j as CampaignT)
+  }
 
   const counts = useMemo(() => {
     const m = new Map<string, number>()
@@ -114,7 +161,6 @@ export function Tracker() {
     for (const [k] of FIELDS) fields[k] = String(draft[k] ?? '')
     await patch(l.id, {
       fields,
-      campaign: draft.campaign ?? l.campaign,
       skips: { skip_website_form: !!draft.skip_website_form, skip_facebook_dm: !!draft.skip_facebook_dm },
     })
     setOpenId(null)
@@ -122,23 +168,25 @@ export function Tracker() {
   }
 
   const addLead = async () => {
+    if (!campaign) return
     setError('')
-    const res = await fetch('/api/tracker', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newLead) })
+    const res = await fetch('/api/tracker', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...newLead, campaign_id: campaign.id }) })
     const j = await res.json().catch(() => ({}))
     if (!res.ok) return setError(j.error ?? 'Could not add the lead')
     setAdding(false)
-    setNewLead({ campaign: 'EMAIL' })
+    setNewLead({})
     load()
   }
 
   const importFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file) return
+    if (!file || !campaign) return
     setBusy(true)
     setError('')
     setSummary(null)
     const fd = new FormData()
     fd.append('file', file)
+    fd.append('campaign_id', String(campaign.id))
     const res = await fetch('/api/tracker/import', { method: 'POST', body: fd })
     const j = await res.json().catch(() => ({}))
     setBusy(false)
@@ -150,12 +198,6 @@ export function Tracker() {
 
   const form = (values: Partial<Lead>, set: (v: Partial<Lead>) => void, showSkips: boolean) => (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 10 }}>
-      <label className="small" style={{ display: 'block' }}>
-        <span className="muted">Campaign</span>
-        <select value={values.campaign ?? 'EMAIL'} onChange={(e) => set({ ...values, campaign: e.target.value as Campaign })} style={{ width: '100%' }}>
-          {CAMPAIGNS.map((campaign) => <option key={campaign} value={campaign}>{CAMPAIGN_LABELS[campaign]}</option>)}
-        </select>
-      </label>
       {FIELDS.map(([k, label]) => (
         <label key={k} className="small" style={{ display: 'block' }}>
           <span className="muted">{label}</span>
@@ -177,11 +219,72 @@ export function Tracker() {
     </div>
   )
 
+  if (!campaign) {
+    return (
+      <>
+        {error && <div className="alert bad">{error}</div>}
+        <div className="panel">
+          <div className="row" style={{ alignItems: 'center' }}>
+            <strong>Campaigns</strong>
+            <button className="btn ghost" onClick={() => setCreating(!creating)}>{creating ? 'Cancel' : 'New campaign'}</button>
+          </div>
+          <div className="small muted" style={{ marginTop: 8 }}>
+            A campaign holds the leads being worked. Its type — Email outreach or LinkedIn outreach — is picked
+            when the campaign is created, and every lead in it follows that type&apos;s stage ladder.
+          </div>
+          {creating && (
+            <div className="row" style={{ marginTop: 14, alignItems: 'flex-end' }}>
+              <label className="small" style={{ display: 'block' }}>
+                <span className="muted">Campaign name</span>
+                <input value={newCampaign.name} onChange={(e) => setNewCampaign({ ...newCampaign, name: e.target.value })} placeholder="e.g. Charlotte plumbers — Nov" style={{ minWidth: 260 }} />
+              </label>
+              <label className="small" style={{ display: 'block' }}>
+                <span className="muted">Type</span>
+                <select value={newCampaign.type} onChange={(e) => setNewCampaign({ ...newCampaign, type: e.target.value as Campaign })}>
+                  {CAMPAIGNS.map((t) => <option key={t} value={t}>{CAMPAIGN_LABELS[t]}</option>)}
+                </select>
+              </label>
+              <button className="btn" onClick={createCampaign}>Create campaign</button>
+            </div>
+          )}
+        </div>
+        {!campaigns ? <p className="muted">Loading…</p> : !campaigns.length ? (
+          <p className="muted">No campaigns yet. Create your first campaign above.</p>
+        ) : (
+          <div className="gridwrap">
+            <table className="grid">
+              <thead>
+                <tr><th>Campaign</th><th>Type</th><th>Leads</th><th>Created</th><th></th></tr>
+              </thead>
+              <tbody>
+                {campaigns.map((c) => (
+                  <tr key={c.id}>
+                    <td title={c.name}>{c.name}</td>
+                    <td><span className="badge generic">{CAMPAIGN_LABELS[c.type]}</span></td>
+                    <td>{c.lead_count}</td>
+                    <td>{new Date(c.created_at).toLocaleDateString()}</td>
+                    <td><button className="ghost" onClick={() => openCampaign(c)}>Open ▸</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </>
+    )
+  }
+
   return (
     <>
+      <div className="row" style={{ alignItems: 'center', marginBottom: 10 }}>
+        <button className="btn ghost" onClick={() => { setOpenCampaignId(null); setLeads(null) }}>‹ All campaigns</button>
+        <strong>{campaign.name}</strong>
+        <span className="badge generic">{campaignLabel(campaign.type)}</span>
+      </div>
+
       <div className="panel">
         <div className="row" style={{ alignItems: 'center' }}>
-          <a className="btn" href="/api/tracker/export">Export tracker (CSV)</a>
+          <a className="btn" href={`/api/tracker/export?campaign_id=${campaign.id}`}>Export campaign (CSV)</a>
           <label className="btn ghost" style={{ cursor: 'pointer' }}>
             {busy ? 'Importing…' : 'Import spreadsheet (CSV)'}
             <input type="file" accept=".csv,text/csv" onChange={importFile} style={{ display: 'none' }} disabled={busy} />
@@ -189,8 +292,8 @@ export function Tracker() {
           <button className="btn ghost" onClick={() => setAdding(!adding)}>{adding ? 'Cancel' : 'Add a lead'}</button>
         </div>
         <div className="small muted" style={{ marginTop: 8 }}>
-          Importing matches rows on company name + phone (email as a fallback) and only refreshes contact details —
-          a lead&apos;s stage is never changed by an import. Rows on the do-not-contact or suppression list are skipped.
+          Importing matches rows on company name + phone (email as a fallback), inside this campaign only, and only refreshes contact details —
+          a lead&apos;s stage is never changed by an import. Rows on the DNC list are skipped.
         </div>
         {adding && (
           <div style={{ marginTop: 14 }}>
@@ -203,7 +306,7 @@ export function Tracker() {
         {summary && (
           <div className="alert ok" style={{ marginTop: 12 }}>
             Imported {summary.rows} rows: {summary.added} added, {summary.updated} updated, {summary.skippedSuppressed} skipped
-            (do-not-contact / suppression){summary.suppressedReasons.length > 0 && <> — {summary.suppressedReasons.slice(0, 5).join('; ')}</>}.
+            — on the DNC list{summary.suppressedReasons.length > 0 && <> — {summary.suppressedReasons.slice(0, 5).join('; ')}</>}.
             {summary.errors.length > 0 && <> {summary.errors.length} rows had errors ({summary.errors.slice(0, 3).map((e) => `row ${e.row}: ${e.message}`).join('; ')}).</>}
           </div>
         )}
@@ -217,7 +320,7 @@ export function Tracker() {
         </div>
         <select value={stageFilter} onChange={(e) => { setStageFilter(e.target.value); setPage(0) }}>
           <option value="">All stages ({leads?.length ?? 0})</option>
-          {OUTREACH_STAGES.map((s) => <option key={s} value={s}>{stageLabel(s)} ({counts.get(s) ?? 0})</option>)}
+          {stagesForCampaign(campaign.type).map((s) => <option key={s} value={s}>{stageLabel(s)} ({counts.get(s) ?? 0})</option>)}
           {OUTCOMES.map((s) => <option key={s} value={s}>{stageLabel(s)} ({counts.get(s) ?? 0})</option>)}
         </select>
         <input placeholder="Filter rows…" value={filter} onChange={(e) => { setFilter(e.target.value); setPage(0) }} style={{ minWidth: 200 }} />
@@ -236,12 +339,12 @@ export function Tracker() {
             </thead>
             <tbody>
               {pageRows.map((l) => {
-                const next = nextStage(l.stage, l)
+                const next = nextStage(l.stage, { campaign: campaign.type, skip_website_form: l.skip_website_form, skip_facebook_dm: l.skip_facebook_dm })
                 const open = openId === l.id
                 return [
                   <tr key={l.id}>
                     <td title={l.company_name}>{l.company_name}</td>
-                    <td><span className="badge generic">{campaignShortLabel(l.campaign)}</span></td>
+                    <td><span className="badge generic">{campaignShortLabel(campaign.type)}</span></td>
                     <td title={l.contact_name}>{l.contact_name}</td>
                     <td>{l.personal_email ? <a href={`mailto:${l.personal_email}`}>{l.personal_email}</a> : ''}</td>
                     <td>{l.company_email}</td>
@@ -254,7 +357,7 @@ export function Tracker() {
                       {next && <button className="ghost" title={`Next: ${stageLabel(next)}`} onClick={() => patch(l.id, { advance: true })}>Advance ▸</button>}
                       <select value="" title="Set stage / outcome" onChange={(e) => { if (e.target.value) patch(l.id, { stage: e.target.value }) }} style={{ maxWidth: 130 }}>
                         <option value="">Set stage…</option>
-                        {stagesForCampaign(l.campaign).map((s) => <option key={s} value={s}>{stageLabel(s)}</option>)}
+                        {stagesForCampaign(campaign.type).map((s) => <option key={s} value={s}>{stageLabel(s)}</option>)}
                         {OUTCOMES.map((s) => <option key={s} value={s}>{stageLabel(s)}</option>)}
                       </select>
                       <button className="ghost" onClick={() => toggleOpen(l)}>{open ? 'Close' : 'Details'}</button>
@@ -263,6 +366,9 @@ export function Tracker() {
                   open && draft ? (
                     <tr key={`${l.id}-detail`}>
                       <td colSpan={11} style={{ whiteSpace: 'normal', maxWidth: 'none', background: 'var(--panel-2)' }}>
+                        <div className="small muted" style={{ marginBottom: 10 }}>
+                          Campaign: {campaign.name} · {campaignLabel(campaign.type)}
+                        </div>
                         {form(draft, setDraft, true)}
                         <div className="row" style={{ marginTop: 10, alignItems: 'center' }}>
                           <button className="btn" onClick={() => saveDraft(l)}>Save changes</button>

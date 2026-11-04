@@ -127,7 +127,8 @@ CREATE TABLE IF NOT EXISTS crawl_cache (
 );
 CREATE TABLE IF NOT EXISTS tracker_leads (
   id bigserial PRIMARY KEY,
-  dedupe_key text UNIQUE NOT NULL,  -- normalized company name + phone, or email when there is no phone
+  dedupe_key text NOT NULL,  -- normalized company name + phone, or email when there is no phone; unique per campaign (see index below)
+  campaign_id integer,       -- the campaign (src/web/tracker.ts TrackerCampaign) this lead is worked in
   company_name text NOT NULL DEFAULT '',
   segment text NOT NULL DEFAULT '',
   franchise_brand text NOT NULL DEFAULT '',
@@ -146,7 +147,7 @@ CREATE TABLE IF NOT EXISTS tracker_leads (
   facebook_url text NOT NULL DEFAULT '',
   source text NOT NULL DEFAULT '',
   notes text NOT NULL DEFAULT '',
-  campaign text NOT NULL DEFAULT 'EMAIL',  -- EMAIL or LINKEDIN, chosen when the lead is set up
+  campaign text NOT NULL DEFAULT 'EMAIL',  -- legacy per-lead type from before named campaigns; unused, the type now lives on tracker_campaigns
   stage text NOT NULL DEFAULT 'INITIAL PERSONAL EMAIL',  -- one of src/tracker/stages.ts
   stage_updated_at timestamptz NOT NULL DEFAULT now(),
   skip_website_form boolean NOT NULL DEFAULT false,  -- stage 8 does not apply to this lead
@@ -155,6 +156,26 @@ CREATE TABLE IF NOT EXISTS tracker_leads (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE tracker_leads ADD COLUMN IF NOT EXISTS campaign text NOT NULL DEFAULT 'EMAIL';
+CREATE TABLE IF NOT EXISTS tracker_campaigns (
+  id serial PRIMARY KEY,
+  name text NOT NULL,
+  type text NOT NULL DEFAULT 'EMAIL',  -- EMAIL or LINKEDIN: which outreach ladder the campaign's leads follow
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE tracker_leads ADD COLUMN IF NOT EXISTS campaign_id integer;
+-- Leads from before campaigns existed join one auto-created "General" campaign (Email outreach).
+INSERT INTO tracker_campaigns (name, type)
+  SELECT 'General', 'EMAIL'
+  WHERE EXISTS (SELECT 1 FROM tracker_leads WHERE campaign_id IS NULL)
+    AND NOT EXISTS (SELECT 1 FROM tracker_campaigns WHERE name = 'General');
+UPDATE tracker_leads
+  SET campaign_id = (SELECT id FROM tracker_campaigns WHERE name = 'General' ORDER BY id LIMIT 1)
+  WHERE campaign_id IS NULL;
+-- Dedupe identity is per campaign: the same business may be worked in two campaigns at once.
+ALTER TABLE tracker_leads DROP CONSTRAINT IF EXISTS tracker_leads_dedupe_key_key;
+CREATE UNIQUE INDEX IF NOT EXISTS tracker_leads_campaign_dedupe ON tracker_leads (campaign_id, dedupe_key);
+CREATE INDEX IF NOT EXISTS tracker_leads_campaign ON tracker_leads (campaign_id);
 CREATE INDEX IF NOT EXISTS tracker_leads_stage ON tracker_leads (stage);
 CREATE TABLE IF NOT EXISTS tracker_stage_history (
   id bigserial PRIMARY KEY,

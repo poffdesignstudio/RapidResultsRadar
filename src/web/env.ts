@@ -20,12 +20,6 @@ export function configChecks(): ConfigCheck[] {
       required: true,
       fix: 'In Vercel: Project → Storage → Create Database → Neon (Postgres, free plan) → connect it to this project. That adds DATABASE_URL. Then redeploy.',
     },
-    {
-      name: 'GOOGLE_PLACES_API_KEY',
-      ok: !!process.env.GOOGLE_PLACES_API_KEY,
-      required: false,
-      fix: 'Optional. Without it, searches use the free sources only. In Vercel: Settings → Environment Variables, add GOOGLE_PLACES_API_KEY, then redeploy.',
-    },
   ]
 }
 

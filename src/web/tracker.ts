@@ -3,19 +3,32 @@ import { domainFromUrl, normName, normPhone, streetKey, zip5 } from '../core/nor
 import { checkDnc } from '../match/doNotContact.js'
 import { isSuppressed } from '../pipeline.js'
 import {
-  ALL_STAGES, campaignOrDefault, firstStageForCampaign, isStage, nextStage, parseCampaign,
+  ALL_STAGES, firstStageForCampaign, isStage, nextStage, parseCampaign,
   type Campaign,
 } from '../tracker/stages.js'
 import { q, q1 } from './db.js'
 import { loadDncRows, loadSuppressionSets } from './stores.js'
 
 /**
- * The Lead Tracker: leads Leah works through the outreach ladder in src/tracker/stages.ts.
- * Separate from the search `leads` table — these rows carry a stage, and the stage (plus its
- * history) belongs to the tracker alone: CSV imports refresh contact data, never the stage.
+ * The Campaign Tracker: named campaigns hold the leads Leah works through the outreach ladder
+ * in src/tracker/stages.ts. A campaign carries one of the two types (EMAIL = "Email outreach",
+ * LINKEDIN = "LinkedIn outreach"), chosen when the campaign is created, and every lead inside
+ * it follows that type's ladder. Separate from the search `leads` table — these rows carry a
+ * stage, and the stage (plus its history) belongs to the tracker alone: CSV imports refresh
+ * contact data, never the stage.
  */
+export interface TrackerCampaign {
+  id: number
+  name: string
+  type: Campaign
+  lead_count: number
+  created_at: string
+  updated_at: string
+}
+
 export interface TrackerLead {
   id: number
+  campaign_id: number
   company_name: string
   segment: string
   franchise_brand: string
@@ -34,7 +47,6 @@ export interface TrackerLead {
   facebook_url: string
   source: string
   notes: string
-  campaign: Campaign
   stage: string
   stage_updated_at: string
   skip_website_form: boolean
@@ -51,10 +63,13 @@ export const TRACKER_FIELDS = [
 ] as const
 export type TrackerField = (typeof TRACKER_FIELDS)[number]
 
-const SELECT = `SELECT id::int AS id, company_name, segment, franchise_brand, contact_name, contact_title,
+const SELECT = `SELECT id::int AS id, campaign_id::int AS campaign_id, company_name, segment, franchise_brand, contact_name, contact_title,
   personal_email, company_email, phone, contact_phone, address, city, state, zip, website,
-  linkedin_url, facebook_url, source, notes, campaign, stage, stage_updated_at, skip_website_form,
+  linkedin_url, facebook_url, source, notes, stage, stage_updated_at, skip_website_form,
   skip_facebook_dm, created_at, updated_at FROM tracker_leads`
+
+const CAMPAIGN_SELECT = `SELECT c.id::int AS id, c.name, c.type, count(l.id)::int AS lead_count, c.created_at, c.updated_at
+  FROM tracker_campaigns c LEFT JOIN tracker_leads l ON l.campaign_id = c.id`
 
 type RawLead = Omit<TrackerLead, 'stage_updated_at' | 'created_at' | 'updated_at'> & {
   stage_updated_at: Date | string
@@ -62,11 +77,44 @@ type RawLead = Omit<TrackerLead, 'stage_updated_at' | 'created_at' | 'updated_at
   updated_at: Date | string
 }
 
+type RawCampaign = Omit<TrackerCampaign, 'created_at' | 'updated_at'> & {
+  created_at: Date | string
+  updated_at: Date | string
+}
+
 const iso = (v: Date | string) => (v instanceof Date ? v.toISOString() : String(v))
 const asLead = (r: RawLead): TrackerLead => ({ ...r, stage_updated_at: iso(r.stage_updated_at), created_at: iso(r.created_at), updated_at: iso(r.updated_at) })
+const asCampaign = (r: RawCampaign): TrackerCampaign => ({ ...r, created_at: iso(r.created_at), updated_at: iso(r.updated_at) })
 
-export async function listTrackerLeads(): Promise<TrackerLead[]> {
-  const rows = await q<RawLead>(`${SELECT} ORDER BY company_name, id LIMIT 10000`)
+export async function listTrackerCampaigns(): Promise<TrackerCampaign[]> {
+  const rows = await q<RawCampaign>(`${CAMPAIGN_SELECT} GROUP BY c.id ORDER BY c.created_at, c.id`)
+  return rows.map(asCampaign)
+}
+
+export async function getTrackerCampaign(id: number): Promise<TrackerCampaign | undefined> {
+  const row = await q1<RawCampaign>(`${CAMPAIGN_SELECT} WHERE c.id=$1 GROUP BY c.id`, [id])
+  return row ? asCampaign(row) : undefined
+}
+
+async function requireTrackerCampaign(id: number): Promise<TrackerCampaign> {
+  const campaign = await getTrackerCampaign(id)
+  if (!campaign) throw new Error('Campaign not found')
+  return campaign
+}
+
+export async function createTrackerCampaign(name: string, type: unknown): Promise<TrackerCampaign> {
+  const cleanName = String(name ?? '').trim()
+  if (!cleanName) throw new Error('Campaign name is required')
+  const parsed = parseCampaign(type)
+  if (!parsed) throw new Error('Campaign type must be EMAIL or LINKEDIN')
+  const inserted = await q1<{ id: number }>(
+    'INSERT INTO tracker_campaigns (name, type) VALUES ($1, $2) RETURNING id::int AS id', [cleanName, parsed])
+  if (!inserted) throw new Error('Could not create the campaign')
+  return (await getTrackerCampaign(inserted.id))!
+}
+
+export async function listTrackerLeads(campaignId: number): Promise<TrackerLead[]> {
+  const rows = await q<RawLead>(`${SELECT} WHERE campaign_id=$1 ORDER BY company_name, id LIMIT 10000`, [campaignId])
   return rows.map(asLead)
 }
 
@@ -80,7 +128,7 @@ export async function getTrackerLead(id: number): Promise<(TrackerLead & { histo
   return { ...asLead(row), history: history.map((h) => ({ ...h, changed_at: iso(h.changed_at) })) }
 }
 
-/** The identity a spreadsheet row is matched on: normalized company name + phone, email as fallback. */
+/** The identity a spreadsheet row is matched on within its campaign: normalized company name + phone, email as fallback. */
 export function dedupeKeyFor(d: Partial<Record<TrackerField, string>>): string {
   const name = normName(d.company_name ?? '')
   const phone = normPhone(d.phone ?? '') || normPhone(d.contact_phone ?? '')
@@ -97,35 +145,37 @@ const clean = (patch: Partial<Record<TrackerField, string>>) => {
   return out
 }
 
+/** A new lead starts at stage 1 of its campaign's ladder (LINKEDIN campaigns start at INITIAL LINKEDIN DM). */
 export async function createTrackerLead(
-  input: Partial<Record<TrackerField, string>> & { campaign?: unknown },
+  campaignId: number,
+  input: Partial<Record<TrackerField, string>>,
   source = 'manual',
 ): Promise<TrackerLead> {
+  const campaign = await requireTrackerCampaign(campaignId)
   const data = clean(input)
   if (!data.company_name) throw new Error('Company name is required')
-  const campaign = campaignOrDefault(input.campaign)
-  const firstStage = firstStageForCampaign(campaign)
+  const firstStage = firstStageForCampaign(campaign.type)
   const key = dedupeKeyFor(data)
-  const dupe = await q1('SELECT 1 FROM tracker_leads WHERE dedupe_key=$1', [key])
-  if (dupe) throw new Error('A tracker lead with this company name and phone (or email) already exists')
-  // Placeholders: $1 = dedupe key, $2..$19 = the contact fields, then campaign and first stage.
+  const dupe = await q1('SELECT 1 FROM tracker_leads WHERE campaign_id=$1 AND dedupe_key=$2', [campaignId, key])
+  if (dupe) throw new Error('A lead with this company name and phone (or email) already exists in this campaign')
+  const params: unknown[] = [key, campaignId, ...TRACKER_FIELDS.map((f) => data[f] ?? ''), firstStage]
   const inserted = await q1<{ id: number }>(
-    `INSERT INTO tracker_leads (dedupe_key, ${TRACKER_FIELDS.join(', ')}, campaign, stage)
-     VALUES ($1, ${TRACKER_FIELDS.map((_, i) => `$${i + 2}`).join(', ')}, $${TRACKER_FIELDS.length + 2}, $${TRACKER_FIELDS.length + 3}) RETURNING id::int AS id`,
-    [key, ...TRACKER_FIELDS.map((f) => data[f] ?? ''), campaign, firstStage])
+    `INSERT INTO tracker_leads (dedupe_key, campaign_id, ${TRACKER_FIELDS.join(', ')}, stage)
+     VALUES (${params.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id::int AS id`,
+    params)
   if (!inserted) throw new Error('Could not create the lead')
   await q('INSERT INTO tracker_stage_history (lead_id, from_stage, to_stage, source) VALUES ($1, NULL, $2, $3)', [inserted.id, firstStage, source])
   return asLead((await q1<RawLead>(`${SELECT} WHERE id=$1`, [inserted.id]))!)
 }
 
 /**
- * Edits contact data, campaign and skip flags. Campaign is a plain tracker-owned field:
- * changing it neither resets the stage nor writes a stage-history entry. Stage changes go
- * through setTrackerStage so they are logged.
+ * Edits contact data and skip flags. A lead's campaign (and therefore its ladder) is set by
+ * where the lead lives and is not editable here. Stage changes go through setTrackerStage so
+ * they are logged.
  */
 export async function updateTrackerLead(
   id: number,
-  patch: Partial<Record<TrackerField, string>> & { campaign?: unknown },
+  patch: Partial<Record<TrackerField, string>>,
   skips?: { skip_website_form?: boolean; skip_facebook_dm?: boolean },
 ): Promise<TrackerLead> {
   const data = clean(patch)
@@ -135,12 +185,6 @@ export async function updateTrackerLead(
     if (data[f] === undefined) continue
     params.push(data[f])
     sets.push(`${f}=$${params.length}`)
-  }
-  if (patch.campaign !== undefined) {
-    const campaign = parseCampaign(patch.campaign)
-    if (!campaign) throw new Error('Campaign must be EMAIL or LINKEDIN')
-    params.push(campaign)
-    sets.push(`campaign=$${params.length}`)
   }
   for (const flag of ['skip_website_form', 'skip_facebook_dm'] as const) {
     if (skips?.[flag] === undefined) continue
@@ -163,11 +207,16 @@ export async function setTrackerStage(id: number, to: string, source = 'manual')
   return asLead((await q1<RawLead>(`${SELECT} WHERE id=$1`, [id]))!)
 }
 
-/** Moves a lead one outreach step forward, honoring its skip flags. */
+/** Moves a lead one outreach step forward on its campaign's ladder, honoring its skip flags. */
 export async function advanceTrackerLead(id: number): Promise<TrackerLead> {
   const row = await q1<RawLead>(`${SELECT} WHERE id=$1`, [id])
   if (!row) throw new Error('Lead not found')
-  const next = nextStage(row.stage, row)
+  const campaign = await getTrackerCampaign(row.campaign_id)
+  const next = nextStage(row.stage, {
+    campaign: campaign?.type,
+    skip_website_form: row.skip_website_form,
+    skip_facebook_dm: row.skip_facebook_dm,
+  })
   if (!next) throw new Error(`"${row.company_name}" is at the last outreach step (${row.stage}). Set an outcome instead.`)
   return setTrackerStage(id, next)
 }
@@ -198,15 +247,6 @@ const HEADER_FIELDS: [TrackerField, string[]][] = [
   ['notes', ['notes', 'note', 'comments', 'comment']],
 ]
 
-/** The optional campaign column is used only when an import creates a lead. */
-function campaignFromRow(raw: Record<string, string>): Campaign | undefined {
-  for (const [header, value] of Object.entries(raw)) {
-    const normalized = header.toLowerCase().replace(/[^a-z0-9]/g, '')
-    if (normalized === 'campaign' || normalized === 'campaigntype') return parseCampaign(value)
-  }
-  return undefined
-}
-
 function mapRow(raw: Record<string, string>): Partial<Record<TrackerField, string>> {
   const byNorm = new Map<string, string>()
   for (const [h, v] of Object.entries(raw)) {
@@ -235,13 +275,15 @@ export interface TrackerImportSummary {
 }
 
 /**
- * Leah's spreadsheet, merged into the tracker. Rows match an existing lead on the dedupe key
- * (name + phone, email as fallback) and only refresh business/contact fields — the campaign,
- * stage, outcome, skip flags and stage history are never touched for an existing lead. An
- * optional campaign column is read only when the row creates a new lead. Rows on the
- * do-not-contact list (a "drop" match) or the suppression list are skipped and counted.
+ * Leah's spreadsheet, merged into one campaign. Rows match an existing lead IN THE SAME
+ * CAMPAIGN on the dedupe key (name + phone, email as fallback) and only refresh
+ * business/contact fields — the stage, outcome, skip flags and stage history are never
+ * touched, and any campaign column in the sheet is ignored: the campaign comes from where
+ * the import is run. Rows on the DNC list (a "drop" match or a suppression match) are
+ * skipped and counted.
  */
-export async function importTrackerCsv(text: string, fileName: string): Promise<TrackerImportSummary> {
+export async function importTrackerCsv(text: string, fileName: string, campaignId: number): Promise<TrackerImportSummary> {
+  await requireTrackerCampaign(campaignId)
   const raw = parseCsv(text)
   if (!raw.length) throw new Error('The file has no rows')
   const dnc = await loadDncRows()
@@ -258,7 +300,7 @@ export async function importTrackerCsv(text: string, fileName: string): Promise<
       const emails = [data.personal_email, data.company_email].filter(Boolean) as string[]
       const domain = domainFromUrl(data.website ?? '')
       if (emails.some((e) => isSuppressed(sup, e)) || (domain && isSuppressed(sup, undefined, domain))) {
-        noteSuppressed(`${data.company_name}: on the suppression list`)
+        noteSuppressed(`${data.company_name}: on the DNC list`)
         continue
       }
       if (dnc) {
@@ -266,11 +308,11 @@ export async function importTrackerCsv(text: string, fileName: string): Promise<
         if (d.action === 'drop') { noteSuppressed(`${data.company_name}: ${d.reason}`); continue }
       }
       const key = dedupeKeyFor(data)
-      let existing = await q1<{ id: number }>('SELECT id::int AS id FROM tracker_leads WHERE dedupe_key=$1', [key])
+      let existing = await q1<{ id: number }>('SELECT id::int AS id FROM tracker_leads WHERE campaign_id=$1 AND dedupe_key=$2', [campaignId, key])
       if (!existing && emails.length) {
         existing = await q1<{ id: number }>(
-          'SELECT id::int AS id FROM tracker_leads WHERE lower(personal_email) = ANY($1) OR lower(company_email) = ANY($1) LIMIT 1',
-          [emails.map((e) => e.toLowerCase())])
+          'SELECT id::int AS id FROM tracker_leads WHERE campaign_id=$1 AND (lower(personal_email) = ANY($2) OR lower(company_email) = ANY($2)) LIMIT 1',
+          [campaignId, emails.map((e) => e.toLowerCase())])
       }
       if (existing) {
         // Non-empty cells win; blank cells never erase. Stage fields are not in TRACKER_FIELDS,
@@ -280,8 +322,7 @@ export async function importTrackerCsv(text: string, fileName: string): Promise<
         await updateTrackerLead(existing.id, patch)
         summary.updated++
       } else {
-        const campaign = campaignFromRow(raw[i])
-        await createTrackerLead(campaign ? { ...data, campaign } : data, `import:${fileName}`)
+        await createTrackerLead(campaignId, data, `import:${fileName}`)
         summary.added++
       }
     } catch (e) {
@@ -291,15 +332,17 @@ export async function importTrackerCsv(text: string, fileName: string): Promise<
   return summary
 }
 
-export const TRACKER_EXPORT_COLUMNS = [...TRACKER_FIELDS, 'campaign', 'stage', 'stage_updated_at'] as const
+export const TRACKER_EXPORT_COLUMNS = [...TRACKER_FIELDS, 'campaign_name', 'campaign_type', 'stage', 'stage_updated_at'] as const
 
-/** All tracker leads as flat rows for the CSV export, campaign and stage included. */
-export async function trackerExportRows(): Promise<Record<string, string>[]> {
-  const leads = await listTrackerLeads()
+/** One campaign's leads as flat rows for the CSV export, campaign name and type included. */
+export async function trackerExportRows(campaignId: number): Promise<Record<string, string>[]> {
+  const campaign = await requireTrackerCampaign(campaignId)
+  const leads = await listTrackerLeads(campaignId)
   return leads.map((l) => {
     const row: Record<string, string> = {}
     for (const f of TRACKER_FIELDS) row[f] = l[f]
-    row.campaign = l.campaign
+    row.campaign_name = campaign.name
+    row.campaign_type = campaign.type
     row.stage = l.stage
     row.stage_updated_at = l.stage_updated_at
     return row

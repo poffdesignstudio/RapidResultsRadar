@@ -5,4 +5,9 @@ import { formatDate } from '../../../../core/dates'
 
 export const dynamic = 'force-dynamic'
 
-export const GET = handle(async () => csvResponse(toCsv(TRACKER_EXPORT_COLUMNS, await trackerExportRows()), `rapid-radar_tracker_${formatDate()}.csv`))
+/** The export is scoped to one campaign: /api/tracker/export?campaign_id=N */
+export const GET = handle(async (req: Request) => {
+  const campaignId = Number(new URL(req.url).searchParams.get('campaign_id'))
+  if (!Number.isInteger(campaignId) || campaignId <= 0) throw new Error('Choose a campaign first (campaign_id is required)')
+  return csvResponse(toCsv(TRACKER_EXPORT_COLUMNS, await trackerExportRows(campaignId)), `rapid-radar_tracker_${formatDate()}.csv`)
+})
