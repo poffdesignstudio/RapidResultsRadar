@@ -17,18 +17,17 @@ export const GET = handle(async (_req: Request, ctx: { params: Promise<{ id: str
 
 interface PatchBody {
   fields?: Partial<Record<TrackerField, string>>
-  campaign?: string
   skips?: { skip_website_form?: boolean; skip_facebook_dm?: boolean }
   stage?: string
   advance?: boolean
 }
 
-/** One call can edit contact fields / campaign / skip flags, then optionally move the stage. */
+/** One call can edit contact fields / skip flags, then optionally move the stage. */
 export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const id = await idOf(ctx)
   const body = (await req.json()) as PatchBody
-  let lead = body.fields || body.campaign || body.skips
-    ? await updateTrackerLead(id, { ...(body.fields ?? {}), ...(body.campaign ? { campaign: body.campaign } : {}) }, body.skips)
+  let lead = body.fields || body.skips
+    ? await updateTrackerLead(id, body.fields ?? {}, body.skips)
     : undefined
   if (body.advance) lead = await advanceTrackerLead(id)
   else if (body.stage) lead = await setTrackerStage(id, body.stage)
