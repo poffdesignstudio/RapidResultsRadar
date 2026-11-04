@@ -308,8 +308,9 @@ export interface TrackerImportSummary {
  * CAMPAIGN first on the sheet's LEAD ID when the row carries one, then on the dedupe key
  * (name + phone, email as fallback), and only refresh business/contact fields — the stage,
  * outcome, skip flags and stage history are never touched, and any campaign column in the
- * sheet is ignored: the campaign comes from where the import is run. Rows on the DNC list
- * (a "drop" match or a suppression match) are skipped and counted.
+ * sheet is ignored: the campaign comes from where the import is run. Rows on either
+ * do-not-contact list (a client "drop" match, or a suppression match on email, domain,
+ * phone or business name) are skipped and counted.
  */
 export async function importTrackerCsv(text: string, fileName: string, campaignId: number): Promise<TrackerImportSummary> {
   return importTrackerRows(parseCsv(text), fileName, campaignId)
@@ -344,6 +345,17 @@ export async function importTrackerRows(raw: Record<string, string>[], fileName:
       if (dnc) {
         const d = checkDnc(dnc, { names: [data.company_name], brand: data.franchise_brand || undefined, city: data.city, state: data.state })
         if (d.action === 'drop') { noteSuppressed(`${data.company_name}: ${d.reason}`); continue }
+      }
+      // Both lists screen on phone too, and suppression entries with a business
+      // name screen on name — the same coverage the search applies.
+      const phones = [normPhone(data.phone ?? ''), normPhone(data.contact_phone ?? '')].filter(Boolean)
+      if (phones.some((p) => sup.phones?.has(p))) {
+        noteSuppressed(`${data.company_name}: on the DNC list`)
+        continue
+      }
+      if (sup.names?.length) {
+        const s = checkDnc(sup.names, { names: [data.company_name], brand: data.franchise_brand || undefined, city: data.city, state: data.state })
+        if (s.action === 'drop') { noteSuppressed(`${data.company_name}: on the suppression list`); continue }
       }
       // A LEAD ID in the sheet is the row's identity: it wins over the name/phone keys.
       let existing: { id: number } | undefined

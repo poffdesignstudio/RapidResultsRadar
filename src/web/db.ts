@@ -209,4 +209,52 @@ CREATE TABLE IF NOT EXISTS tracker_stage_history (
   changed_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS tracker_stage_history_lead ON tracker_stage_history (lead_id);
+-- The two do-not-contact lists, unified: kind 'client' = existing clients,
+-- kind 'suppression' = people who said leave them alone. Each entry carries the
+-- identifying values its source had (name, brand, address, email, phone).
+CREATE TABLE IF NOT EXISTS list_entries (
+  id bigserial PRIMARY KEY,
+  kind text NOT NULL DEFAULT 'client',   -- 'client' | 'suppression'
+  name text NOT NULL DEFAULT '',
+  brand text NOT NULL DEFAULT '',
+  address text NOT NULL DEFAULT '',
+  city text NOT NULL DEFAULT '',
+  state text NOT NULL DEFAULT '',
+  email text NOT NULL DEFAULT '',        -- lowercased; '@domain.com' blocks a whole domain
+  phone text NOT NULL DEFAULT '',        -- last 10 digits
+  entry_type text NOT NULL DEFAULT 'named_business',  -- legacy DNC flavor, for checkDnc
+  use_for_matching text NOT NULL DEFAULT 'yes',
+  match_rule text NOT NULL DEFAULT '',
+  dedupe text NOT NULL,                  -- entryDedupeKey, or 'legacy:...' for migrated rows
+  source text NOT NULL DEFAULT '',       -- import file name, or 'typed'
+  added_on text NOT NULL                 -- MM-DD-YYYY
+);
+CREATE UNIQUE INDEX IF NOT EXISTS list_entries_dedupe ON list_entries (dedupe);
+CREATE INDEX IF NOT EXISTS list_entries_kind ON list_entries (kind);
+CREATE TABLE IF NOT EXISTS list_migrations (
+  name text PRIMARY KEY
+);
+-- One-time carry-over from the two original list tables (marker-guarded, so a list
+-- John later clears does not resurrect on the next boot). The old do_not_contact
+-- rows are the existing-clients list — the old page labeled it "(existing clients)" —
+-- so they land as kind 'client' with their matching columns intact; the old
+-- suppression rows (emails / @domains, reason kept as the source) land as
+-- kind 'suppression'. The original tables stay in place, just no longer read.
+INSERT INTO list_entries (kind, name, brand, address, city, state, entry_type, use_for_matching, match_rule, dedupe, source, added_on)
+  SELECT 'client',
+         COALESCE(row->>'client_name_raw', ''), COALESCE(row->>'brand', ''),
+         COALESCE(row->>'location_raw', ''), COALESCE(row->>'city', ''), COALESCE(row->>'state', ''),
+         COALESCE(NULLIF(row->>'entry_type', ''), 'named_business'),
+         COALESCE(NULLIF(row->>'use_for_matching', ''), 'yes'),
+         COALESCE(row->>'match_rule', ''),
+         'legacy:client:' || id::text, COALESCE(file_name, ''), imported_on
+  FROM do_not_contact
+  WHERE NOT EXISTS (SELECT 1 FROM list_migrations WHERE name = 'lists_unified_v1')
+  ON CONFLICT (dedupe) DO NOTHING;
+INSERT INTO list_entries (kind, email, dedupe, source, added_on)
+  SELECT 'suppression', value, 'legacy:suppression:' || value, COALESCE(reason, ''), added_on
+  FROM suppression
+  WHERE NOT EXISTS (SELECT 1 FROM list_migrations WHERE name = 'lists_unified_v1')
+  ON CONFLICT (dedupe) DO NOTHING;
+INSERT INTO list_migrations (name) VALUES ('lists_unified_v1') ON CONFLICT (name) DO NOTHING;
 `

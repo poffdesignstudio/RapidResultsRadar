@@ -1,5 +1,6 @@
 import { formatDate } from '../core/dates.js'
 import { parseCsv } from '../core/csv.js'
+import { normPhone } from '../core/normalize.js'
 import type { Lead } from '../leads/build.js'
 import { COLUMNS, type Column } from '../leads/columns.js'
 import { checkDnc } from '../match/doNotContact.js'
@@ -113,8 +114,9 @@ export async function importLeiaCsv(text: string, fileName: string): Promise<Imp
 }
 
 /**
- * Rows for a CSV export. Leads on the do-not-contact or suppression list, and leads marked
- * "drop", are left out; the lists are checked again at export time in case they changed.
+ * Rows for a CSV export. Leads on either do-not-contact list (existing clients or the
+ * suppression list, matched on name, email, domain or phone), and leads marked "drop",
+ * are left out; the lists are checked again at export time in case they changed.
  */
 export async function exportable(rows: LeadRow[]): Promise<{ rows: LeadRow[]; skipped: { lead_id: string; reason: string }[] }> {
   const dnc = await loadDncRows()
@@ -124,8 +126,14 @@ export async function exportable(rows: LeadRow[]): Promise<{ rows: LeadRow[]; sk
   for (const r of rows) {
     if (r.review_status === 'drop') { skipped.push({ lead_id: r.lead_id, reason: 'Marked drop' }); continue }
     if (isSuppressed(sup, r.contact_email, r.domain)) { skipped.push({ lead_id: r.lead_id, reason: 'On the suppression list' }); continue }
+    const phone = normPhone(r.phone)
+    if (phone && sup.phones?.has(phone)) { skipped.push({ lead_id: r.lead_id, reason: 'On the suppression list' }); continue }
     const d = dnc ? checkDnc(dnc, { names: [r.company_name], brand: r.franchise_brand || undefined, city: r.city, state: r.state }) : { action: 'none' as const }
     if (d.action === 'drop') { skipped.push({ lead_id: r.lead_id, reason: d.reason! }); continue }
+    if (sup.names?.length) {
+      const s = checkDnc(sup.names, { names: [r.company_name], brand: r.franchise_brand || undefined, city: r.city, state: r.state })
+      if (s.action === 'drop') { skipped.push({ lead_id: r.lead_id, reason: 'On the suppression list' }); continue }
+    }
     keep.push(r)
   }
   return { rows: keep, skipped }
