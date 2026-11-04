@@ -5,6 +5,7 @@ import type { LeadLedger } from '../leads/ledger.js'
 import { newLeadId } from '../leads/ledger.js'
 import type { CrawlCache, SiteResult } from '../enrich/crawler.js'
 import type { DncRow } from '../match/doNotContact.js'
+import { entryToDncRow, type ListEntry } from '../match/listEntries.js'
 import type { Suppression } from '../pipeline.js'
 import { q, q1, json } from './db.js'
 
@@ -88,15 +89,30 @@ export async function getSourceSettings(): Promise<SourceSetting[]> {
   })
 }
 
+const LIST_COLS = 'kind, name, brand, address, city, state, email, phone, entry_type, use_for_matching, match_rule'
+
+/** The existing-clients list as checkDnc rows; null when the list is empty. */
 export async function loadDncRows(): Promise<DncRow[] | null> {
-  const rows = await q<{ row: DncRow }>('SELECT row FROM do_not_contact ORDER BY id')
-  return rows.length ? rows.map((r) => r.row) : null
+  const rows = await q<ListEntry>(`SELECT ${LIST_COLS} FROM list_entries WHERE kind='client' ORDER BY id`)
+  return rows.length ? rows.map(entryToDncRow) : null
 }
 
+/**
+ * The screening sets for BOTH lists: emails, blocked domains and phones are gathered
+ * from every entry (an existing client's email or phone screens a lead out just like
+ * a suppression entry's does), and suppression entries that carry a business name
+ * also come back as checkDnc rows, so a suppressed business matches by name too.
+ */
 export async function loadSuppressionSets(): Promise<Suppression> {
-  const rows = await q<{ value: string }>('SELECT value FROM suppression')
+  const rows = await q<ListEntry>(`SELECT ${LIST_COLS} FROM list_entries ORDER BY id`)
   const emails = new Set<string>()
   const domains = new Set<string>()
-  for (const { value } of rows) (value.startsWith('@') ? domains.add(value.slice(1)) : emails.add(value))
-  return { emails, domains }
+  const phones = new Set<string>()
+  const names: DncRow[] = []
+  for (const r of rows) {
+    if (r.email) (r.email.startsWith('@') ? domains.add(r.email.slice(1)) : emails.add(r.email))
+    if (r.phone) phones.add(r.phone)
+    if (r.kind === 'suppression' && r.name) names.push(entryToDncRow(r))
+  }
+  return { emails, domains, phones, names, entries: rows.length }
 }
