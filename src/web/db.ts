@@ -145,6 +145,17 @@ CREATE TABLE IF NOT EXISTS tracker_leads (
   website text NOT NULL DEFAULT '',
   linkedin_url text NOT NULL DEFAULT '',
   facebook_url text NOT NULL DEFAULT '',
+  ext_lead_id text NOT NULL DEFAULT '',  -- the LEAD ID from John's spreadsheet; the primary import match when present
+  domain text NOT NULL DEFAULT '',
+  est_15_employees text NOT NULL DEFAULT '',
+  email_status text NOT NULL DEFAULT '',
+  email_source text NOT NULL DEFAULT '',
+  company_linkedin_url text NOT NULL DEFAULT '',
+  contact_facebook_url text NOT NULL DEFAULT '',
+  bbb_url text NOT NULL DEFAULT '',
+  chamber_url text NOT NULL DEFAULT '',
+  confidence text NOT NULL DEFAULT '',
+  automated_flags text NOT NULL DEFAULT '',
   source text NOT NULL DEFAULT '',
   notes text NOT NULL DEFAULT '',
   campaign text NOT NULL DEFAULT 'EMAIL',  -- legacy per-lead type from before named campaigns; unused, the type now lives on tracker_campaigns
@@ -156,6 +167,17 @@ CREATE TABLE IF NOT EXISTS tracker_leads (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE tracker_leads ADD COLUMN IF NOT EXISTS campaign text NOT NULL DEFAULT 'EMAIL';
+ALTER TABLE tracker_leads ADD COLUMN IF NOT EXISTS ext_lead_id text NOT NULL DEFAULT '';
+ALTER TABLE tracker_leads ADD COLUMN IF NOT EXISTS domain text NOT NULL DEFAULT '';
+ALTER TABLE tracker_leads ADD COLUMN IF NOT EXISTS est_15_employees text NOT NULL DEFAULT '';
+ALTER TABLE tracker_leads ADD COLUMN IF NOT EXISTS email_status text NOT NULL DEFAULT '';
+ALTER TABLE tracker_leads ADD COLUMN IF NOT EXISTS email_source text NOT NULL DEFAULT '';
+ALTER TABLE tracker_leads ADD COLUMN IF NOT EXISTS company_linkedin_url text NOT NULL DEFAULT '';
+ALTER TABLE tracker_leads ADD COLUMN IF NOT EXISTS contact_facebook_url text NOT NULL DEFAULT '';
+ALTER TABLE tracker_leads ADD COLUMN IF NOT EXISTS bbb_url text NOT NULL DEFAULT '';
+ALTER TABLE tracker_leads ADD COLUMN IF NOT EXISTS chamber_url text NOT NULL DEFAULT '';
+ALTER TABLE tracker_leads ADD COLUMN IF NOT EXISTS confidence text NOT NULL DEFAULT '';
+ALTER TABLE tracker_leads ADD COLUMN IF NOT EXISTS automated_flags text NOT NULL DEFAULT '';
 CREATE TABLE IF NOT EXISTS tracker_campaigns (
   id serial PRIMARY KEY,
   name text NOT NULL,
@@ -175,6 +197,7 @@ UPDATE tracker_leads
 -- Dedupe identity is per campaign: the same business may be worked in two campaigns at once.
 ALTER TABLE tracker_leads DROP CONSTRAINT IF EXISTS tracker_leads_dedupe_key_key;
 CREATE UNIQUE INDEX IF NOT EXISTS tracker_leads_campaign_dedupe ON tracker_leads (campaign_id, dedupe_key);
+CREATE INDEX IF NOT EXISTS tracker_leads_campaign_ext ON tracker_leads (campaign_id, ext_lead_id);
 CREATE INDEX IF NOT EXISTS tracker_leads_campaign ON tracker_leads (campaign_id);
 CREATE INDEX IF NOT EXISTS tracker_leads_stage ON tracker_leads (stage);
 CREATE TABLE IF NOT EXISTS tracker_stage_history (
