@@ -1,5 +1,5 @@
 import { handle } from '../../../web/api'
-import { createTrackerLead, listTrackerLeads, type TrackerField } from '../../../web/tracker'
+import { createManualTrackerLead, listTrackerLeads, type TrackerField } from '../../../web/tracker'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,9 +11,10 @@ const campaignIdOf = (req: Request) => {
 
 export const GET = handle(async (req: Request) => ({ leads: await listTrackerLeads(campaignIdOf(req)) }))
 
+/** One hand-entered lead: do-not-contact screened, "Manual entry" source, MANUAL- lead ID. */
 export const POST = handle(async (req: Request) => {
   const body = (await req.json()) as Partial<Record<TrackerField, string>> & { campaign_id?: number }
   const campaignId = Number(body.campaign_id)
   if (!Number.isInteger(campaignId) || campaignId <= 0) throw new Error('Choose a campaign first (campaign_id is required)')
-  return createTrackerLead(campaignId, body)
+  return createManualTrackerLead(campaignId, body)
 })
