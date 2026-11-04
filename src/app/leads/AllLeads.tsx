@@ -19,6 +19,14 @@ const CONTACT_FIELDS: [string, string][] = [
   ['personal_email', "Contact's email"],
   ['contact_phone', 'Contact phone'],
 ]
+/** The four profile URLs from the 28-column sheet format — the same stored fields the
+ *  Campaign Tracker's Social Media group and the lead detail read and write. */
+const SOCIAL_FIELDS: [string, string][] = [
+  ['company_linkedin_url', 'Company LinkedIn URL'],
+  ['linkedin_url', "Contact's LinkedIn URL"],
+  ['facebook_url', 'Company Facebook URL'],
+  ['contact_facebook_url', "Contact's Facebook URL"],
+]
 
 export function AllLeads() {
   const [rows, setRows] = useState<Record<string, string>[] | null>(null)
@@ -205,6 +213,7 @@ export function AllLeads() {
                 </div>
               ))}
               {group('CONTACT INFORMATION', CONTACT_FIELDS)}
+              {group('PROFILES / SOCIAL', SOCIAL_FIELDS)}
               <div>
                 <div style={{ fontWeight: 700, letterSpacing: '.05em', fontSize: 12, marginBottom: 8 }}>NOTES</div>
                 <label className="small" style={{ display: 'block' }}>
