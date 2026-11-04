@@ -19,9 +19,9 @@ html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 header.top { display: flex; align-items: center; gap: 20px; padding: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 20; flex-wrap: wrap; }
-header.top .brand { font-weight: 700; letter-spacing: .3px; color: var(--text); }
+header.top .brand { font-weight: 700; letter-spacing: .3px; color: var(--text); display: flex; align-items: center; }
 header.top .brand span { color: var(--accent); }
-header.top nav { display: flex; gap: 4px; flex-wrap: wrap; }
+header.top nav { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
 header.top nav a { color: var(--muted); padding: 6px 10px; border-radius: 6px; }
 header.top nav a:hover, header.top nav a.on { color: var(--text); background: var(--panel-2); text-decoration: none; }
 header.top .spacer { flex: 1; }
