@@ -212,9 +212,11 @@ CREATE INDEX IF NOT EXISTS tracker_stage_history_lead ON tracker_stage_history (
 -- The two do-not-contact lists, unified: kind 'client' = existing clients,
 -- kind 'suppression' = people who said leave them alone. Each entry carries the
 -- identifying values its source had (name, brand, address, email, phone).
+-- Kinds 'risky' and 'dead' later joined the same table: email-only reference
+-- lists from the bulk email searches; nothing screens against them.
 CREATE TABLE IF NOT EXISTS list_entries (
   id bigserial PRIMARY KEY,
-  kind text NOT NULL DEFAULT 'client',   -- 'client' | 'suppression'
+  kind text NOT NULL DEFAULT 'client',   -- 'client' | 'suppression' | 'risky' | 'dead'
   name text NOT NULL DEFAULT '',
   brand text NOT NULL DEFAULT '',
   address text NOT NULL DEFAULT '',

@@ -2,15 +2,18 @@ import { normName, normPhone, streetKey } from '../core/normalize.js'
 import type { DncRow } from './doNotContact.js'
 
 /**
- * One entry on one of the two do-not-contact lists (table `list_entries`):
+ * One entry on one of the lists kept in table `list_entries`:
  * kind 'client' = an existing Rapid Results client, kind 'suppression' = someone who
- * said leave them alone. An entry carries whatever identifying values its source had —
- * a business name, an email (or '@domain.com' for a whole-domain block), a phone —
- * and the search, the exports and the campaign import screen against all of them.
- * The client flavor keeps the legacy do_not_contact columns (entry_type,
- * use_for_matching, match_rule) so checkDnc treats migrated rows exactly as before.
+ * said leave them alone — those two are the do-not-contact lists the search, the
+ * exports and the campaign import screen against. Kinds 'risky' and 'dead' are the
+ * email-only reference lists from the bulk email searches (see match/emailLists.ts);
+ * they are never screened against anything. An entry carries whatever identifying
+ * values its source had — a business name, an email (or '@domain.com' for a
+ * whole-domain block), a phone. The client flavor keeps the legacy do_not_contact
+ * columns (entry_type, use_for_matching, match_rule) so checkDnc treats migrated
+ * rows exactly as before.
  */
-export type ListKind = 'client' | 'suppression'
+export type ListKind = 'client' | 'suppression' | 'risky' | 'dead'
 
 export interface ListEntry {
   id?: number
@@ -39,6 +42,9 @@ const normHeader = (h: string) => h.toLowerCase().replace(/[^a-z0-9]/g, '')
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i
 const DOMAIN_RE = /^@[^\s@]+\.[a-z]{2,}$/i
 const isEmailish = (v: string) => EMAIL_RE.test(v) || DOMAIN_RE.test(v)
+
+/** True for one complete email address (not a '@domain.com' block, not a name). */
+export const isEmailAddress = (v: string) => EMAIL_RE.test(v.trim())
 
 /** First non-empty value among the candidate (already normalized) headers. */
 function pick(byNorm: Map<string, string>, candidates: string[]): string {
