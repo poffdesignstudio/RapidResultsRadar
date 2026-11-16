@@ -1,7 +1,11 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { CAMPAIGN_LABELS, firstStageForCampaign, stageLabel, type Campaign } from '../../tracker/stages'
+import { EMAIL_LIST_LABELS, type EmailListKind } from '../../match/emailLists'
 import { LeadsTable } from '../_components/LeadsTable'
+import { EmailListPanel } from './EmailListPanel'
+
+type LeadsTab = 'leads' | EmailListKind
 
 interface ImportSummary { rows: number; matched: number; unknown: string[]; changed: Record<string, number>; cellsChanged: number }
 interface CampaignT { id: number; name: string; type: Campaign; lead_count: number }
@@ -29,6 +33,7 @@ const SOCIAL_FIELDS: [string, string][] = [
 ]
 
 export function AllLeads() {
+  const [tab, setTab] = useState<LeadsTab>('leads')
   const [rows, setRows] = useState<Record<string, string>[] | null>(null)
   const [error, setError] = useState('')
   const [summary, setSummary] = useState<ImportSummary | null>(null)
@@ -144,6 +149,14 @@ export function AllLeads() {
 
   return (
     <>
+      <div className="tabs">
+        <button className={tab === 'leads' ? 'on' : ''} onClick={() => setTab('leads')}>All Leads</button>
+        <button className={tab === 'risky' ? 'on' : ''} onClick={() => setTab('risky')}>{EMAIL_LIST_LABELS.risky}</button>
+        <button className={tab === 'dead' ? 'on' : ''} onClick={() => setTab('dead')}>{EMAIL_LIST_LABELS.dead}</button>
+      </div>
+      {tab !== 'leads' && <EmailListPanel kind={tab} />}
+      {tab === 'leads' && (
+      <>
       <div className="panel">
         <div className="row" style={{ alignItems: 'center' }}>
           <a className="btn" href="/api/leads/export">Export all leads (CSV)</a>
@@ -172,6 +185,8 @@ export function AllLeads() {
       </div>
       {error && <div className="alert bad">{error}</div>}
       {rows ? <LeadsTable rows={rows} onDeleteSelected={deleteSelected} /> : <p className="muted">Loading…</p>}
+      </>
+      )}
 
       {adding && (
         <div

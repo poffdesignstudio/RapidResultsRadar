@@ -98,13 +98,15 @@ export async function loadDncRows(): Promise<DncRow[] | null> {
 }
 
 /**
- * The screening sets for BOTH lists: emails, blocked domains and phones are gathered
- * from every entry (an existing client's email or phone screens a lead out just like
- * a suppression entry's does), and suppression entries that carry a business name
- * also come back as checkDnc rows, so a suppressed business matches by name too.
+ * The screening sets for BOTH do-not-contact lists: emails, blocked domains and
+ * phones are gathered from every entry (an existing client's email or phone screens
+ * a lead out just like a suppression entry's does), and suppression entries that
+ * carry a business name also come back as checkDnc rows, so a suppressed business
+ * matches by name too. Only the two DNC kinds are read — the 'risky' and 'dead'
+ * email lists share the table but must never screen anything.
  */
 export async function loadSuppressionSets(): Promise<Suppression> {
-  const rows = await q<ListEntry>(`SELECT ${LIST_COLS} FROM list_entries ORDER BY id`)
+  const rows = await q<ListEntry>(`SELECT ${LIST_COLS} FROM list_entries WHERE kind IN ('client', 'suppression') ORDER BY id`)
   const emails = new Set<string>()
   const domains = new Set<string>()
   const phones = new Set<string>()

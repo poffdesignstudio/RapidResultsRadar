@@ -1,12 +1,15 @@
 import { formatDate } from '../core/dates.js'
+import { summarizeImport, type EmailListKind } from '../match/emailLists.js'
 import { entryDedupeKey, type ListEntry, type ListKind } from '../match/listEntries.js'
 import { q, q1, json } from './db.js'
 
 /**
- * Storage for the two do-not-contact lists (table list_entries): 'client' = existing
- * clients, 'suppression' = people who said leave them alone. The loaders the search,
- * exports and campaign import screen with live in stores.ts (loadDncRows,
- * loadSuppressionSets); this module is the read/write side behind the DNC page.
+ * Storage for the lists kept in table list_entries: the two do-not-contact lists
+ * ('client' = existing clients, 'suppression' = people who said leave them alone)
+ * and the two email-only reference lists ('risky', 'dead' — see addEmailListEntries).
+ * The loaders the search, exports and campaign import screen with live in stores.ts
+ * (loadDncRows, loadSuppressionSets) and read only the two DNC kinds; this module
+ * is the read/write side behind the DNC page and the All Leads email-list tabs.
  */
 
 const COLS = 'id::int AS id, kind, name, brand, address, city, state, email, phone, entry_type, use_for_matching, match_rule, source, added_on'
@@ -40,6 +43,30 @@ export async function addListEntries(entries: ListEntry[], source: string, repla
   )
   const total = await countListEntries(kind)
   return { added: total - before, total }
+}
+
+/**
+ * Adds parsed entries to one of the email-only lists ('risky' / 'dead'), reporting
+ * exactly how the batch landed: how many were new, and how many were duplicates
+ * (already on the list, or repeated inside the batch). The dedupe keys already on
+ * the list decide — summarizeImport does the split — so the counts the operator
+ * sees are the counts that were inserted.
+ */
+export async function addEmailListEntries(kind: EmailListKind, entries: ListEntry[], source: string): Promise<{ added: number; duplicates: number; total: number }> {
+  const existing = await q<{ dedupe: string }>('SELECT dedupe FROM list_entries WHERE kind=$1', [kind])
+  const { fresh, duplicates } = summarizeImport(new Set(existing.map((r) => r.dedupe)), entries)
+  if (fresh.length) {
+    const rows = fresh.map((e) => ({ ...e, dedupe: entryDedupeKey(e), source, added_on: formatDate() }))
+    await q(
+      `INSERT INTO list_entries (kind, name, brand, address, city, state, email, phone, entry_type, use_for_matching, match_rule, dedupe, source, added_on)
+       SELECT x->>'kind', x->>'name', x->>'brand', x->>'address', x->>'city', x->>'state', x->>'email', x->>'phone',
+              x->>'entry_type', x->>'use_for_matching', x->>'match_rule', x->>'dedupe', x->>'source', x->>'added_on'
+       FROM jsonb_array_elements($1) AS x
+       ON CONFLICT (dedupe) DO NOTHING`,
+      [json(rows)],
+    )
+  }
+  return { added: fresh.length, duplicates, total: await countListEntries(kind) }
 }
 
 export async function removeListEntry(id: number): Promise<void> {
