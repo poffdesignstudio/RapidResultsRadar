@@ -15,7 +15,7 @@ const LABELS: Record<string, string> = {
   segment: 'Segment', city: 'City', state: 'State', phone: 'Phone', website: 'Website', confidence: 'Confidence',
   flags: 'Flags', notes: 'Notes', source: 'Source', source_id: 'Source ID', date_found: 'Date found', address: 'Address',
   zip: 'ZIP', domain: 'Domain', employee_estimate: 'Employee estimate', contact_phone: 'Contact phone',
-  linkedin_company_url: 'LinkedIn company URL', linkedin_contact_url: 'LinkedIn contact URL', facebook_url: 'Facebook URL',
+  facebook_url: 'Facebook URL',
   bbb_url: 'BBB URL', chamber_url: 'Chamber URL', campaign_name: 'Campaign name', campaign_start: 'Campaign start',
 }
 /** Display label for a column header: explicit label, else the raw key spaced out with its first letter capitalized. */

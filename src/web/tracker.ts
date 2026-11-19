@@ -45,14 +45,12 @@ export interface TrackerLead {
   state: string
   zip: string
   website: string
-  linkedin_url: string
   facebook_url: string
   ext_lead_id: string
   domain: string
   est_15_employees: string
   email_status: string
   email_source: string
-  company_linkedin_url: string
   contact_facebook_url: string
   bbb_url: string
   chamber_url: string
@@ -72,16 +70,16 @@ export interface TrackerLead {
 export const TRACKER_FIELDS = [
   'company_name', 'segment', 'franchise_brand', 'contact_name', 'contact_title', 'personal_email',
   'company_email', 'phone', 'contact_phone', 'address', 'city', 'state', 'zip', 'website',
-  'linkedin_url', 'facebook_url', 'source', 'notes',
-  'ext_lead_id', 'domain', 'est_15_employees', 'email_status', 'email_source', 'company_linkedin_url',
+  'facebook_url', 'source', 'notes',
+  'ext_lead_id', 'domain', 'est_15_employees', 'email_status', 'email_source',
   'contact_facebook_url', 'bbb_url', 'chamber_url', 'confidence', 'automated_flags',
 ] as const
 export type TrackerField = (typeof TRACKER_FIELDS)[number]
 
 const SELECT = `SELECT id::int AS id, campaign_id::int AS campaign_id, company_name, segment, franchise_brand, contact_name, contact_title,
   personal_email, company_email, phone, contact_phone, address, city, state, zip, website,
-  linkedin_url, facebook_url, ext_lead_id, domain, est_15_employees, email_status, email_source,
-  company_linkedin_url, contact_facebook_url, bbb_url, chamber_url, confidence, automated_flags,
+  facebook_url, ext_lead_id, domain, est_15_employees, email_status, email_source,
+  contact_facebook_url, bbb_url, chamber_url, confidence, automated_flags,
   source, notes, stage, stage_updated_at, skip_website_form,
   skip_facebook_dm, created_at, updated_at FROM tracker_leads`
 
@@ -306,14 +304,11 @@ export async function advanceTrackerLead(id: number): Promise<TrackerLead> {
  * Header aliases for Leah's spreadsheet, most specific first. Headers are compared with
  * spaces, underscores and punctuation removed, so "Business Name", "business_name" and
  * "BusinessName" all match — and so do John's exact sheet headers, apostrophes and all
- * ("CONTACT'S EMAIL" -> "contactsemail", "CONTACT PERSON'S  LINKEDIN URL" ->
- * "contactpersonslinkedinurl"). The Radar sheet shape (company_name, contact_email, ...)
- * is covered too.
+ * ("CONTACT'S EMAIL" -> "contactsemail"). The Radar sheet shape (company_name,
+ * contact_email, ...) is covered too.
  */
 const HEADER_FIELDS: [TrackerField, string[]][] = [
   ['ext_lead_id', ['leadid']],
-  ['company_linkedin_url', ['companylinkedinurl', 'linkedincompanyurl']],
-  ['linkedin_url', ['contactpersonslinkedinurl', 'contactpersonlinkedinurl', 'linkedincontacturl', 'contactlinkedinurl', 'linkedinurl', 'linkedin', 'linkedinprofile']],
   ['contact_facebook_url', ['contactpersonalsfacebookurl', 'contactpersonsfacebookurl', 'contactpersonalfacebookurl', 'contactfacebookurl', 'personalfacebookurl']],
   ['facebook_url', ['companyfacebookurl', 'facebookurl', 'facebookpage', 'facebook']],
   ['personal_email', ['contactsemail', 'personalemail', 'contactemail', 'owneremail', 'directemail', 'email', 'emailaddress']],
@@ -439,10 +434,9 @@ export async function importTrackerRows(raw: Record<string, string>[], fileName:
 }
 
 /**
- * The export sheet shape is John's: his 28 columns, his exact headers, in his order —
+ * The export sheet shape is John's: his 26 columns, his exact headers, in his order —
  * the same headers the import maps — followed by the campaign and stage columns.
- * (CONTACT PERSON'S  LINKEDIN URL keeps the double space of his sheet; the import
- * normalization ignores spacing, so an exported file re-imports cleanly.)
+ * (The import normalization ignores spacing, so an exported file re-imports cleanly.)
  */
 export const SHEET_EXPORT_FIELDS: [TrackerField, string][] = [
   ['ext_lead_id', 'LEAD ID'],
@@ -464,8 +458,6 @@ export const SHEET_EXPORT_FIELDS: [TrackerField, string][] = [
   ['email_status', 'EMAIL STATUS'],
   ['email_source', 'EMAIL SOURCE'],
   ['contact_phone', 'CONTACT PHONE'],
-  ['company_linkedin_url', 'COMPANY LINKEDIN URL'],
-  ['linkedin_url', "CONTACT PERSON'S  LINKEDIN URL"],
   ['contact_facebook_url', "CONTACT PERSONAL'S FACEBOOK URL"],
   ['bbb_url', 'BBB URL'],
   ['chamber_url', 'CHAMBER OF COMMERCE URL'],

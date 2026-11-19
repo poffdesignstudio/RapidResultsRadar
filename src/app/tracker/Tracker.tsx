@@ -31,14 +31,12 @@ interface Lead {
   state: string
   zip: string
   website: string
-  linkedin_url: string
   facebook_url: string
   ext_lead_id: string
   domain: string
   est_15_employees: string
   email_status: string
   email_source: string
-  company_linkedin_url: string
   contact_facebook_url: string
   bbb_url: string
   chamber_url: string
@@ -86,8 +84,8 @@ const GROUPS: { title: string; fields: FieldSpec[] }[] = [
   {
     title: 'SOCIAL MEDIA',
     fields: [
-      ['company_linkedin_url', 'Company LinkedIn URL'], ['facebook_url', 'Company Facebook URL'],
-      ['linkedin_url', "Contact person's LinkedIn URL"], ['contact_facebook_url', "Contact personal's Facebook URL"],
+      ['facebook_url', 'Company Facebook URL'],
+      ['contact_facebook_url', "Contact personal's Facebook URL"],
       ['bbb_url', 'BBB URL'], ['chamber_url', 'Chamber of Commerce URL'],
     ],
   },
@@ -95,7 +93,7 @@ const GROUPS: { title: string; fields: FieldSpec[] }[] = [
   { title: 'AUTOMATED FLAGS', fields: [['automated_flags', 'Automated flags']] },
 ]
 
-const URL_FIELDS = new Set<LeadField>(['website', 'domain', 'company_linkedin_url', 'facebook_url', 'linkedin_url', 'contact_facebook_url', 'bbb_url', 'chamber_url'])
+const URL_FIELDS = new Set<LeadField>(['website', 'domain', 'facebook_url', 'contact_facebook_url', 'bbb_url', 'chamber_url'])
 const WIDE_FIELDS = new Set<LeadField>(['notes', 'automated_flags'])
 
 const ALL_FIELDS: LeadField[] = GROUPS.flatMap((g) =>

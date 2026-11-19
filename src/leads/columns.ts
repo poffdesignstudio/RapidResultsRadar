@@ -3,7 +3,7 @@ export const COLUMNS = [
   'lead_id', 'source', 'source_id', 'date_found', 'company_name', 'segment', 'franchise_brand',
   'address', 'city', 'state', 'zip', 'phone', 'website', 'domain', 'employee_estimate', 'hiring_signal',
   'contact_name', 'contact_title', 'contact_email', 'email_status', 'email_source', 'contact_phone',
-  'linkedin_company_url', 'linkedin_contact_url', 'facebook_url', 'bbb_url', 'chamber_url',
+  'facebook_url', 'bbb_url', 'chamber_url',
   'confidence', 'flags', 'review_status', 'campaign_name', 'campaign_start', 'notes',
 ] as const
 export type Column = (typeof COLUMNS)[number]
