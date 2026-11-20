@@ -81,6 +81,11 @@ table.grid td.flags { color: var(--warn); max-width: 360px; }
 table.grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
 table.grid td.saving { opacity: .5; }
 .pager { display: flex; gap: 8px; align-items: center; padding: 8px 0; }
+/* Tap-to-call: the number stays readable text, the button beside it is the dialer —
+   a generous tap target for working the call list on a phone. */
+.phonecell { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.callbtn { display: inline-flex; align-items: center; gap: 5px; min-height: 40px; padding: 8px 14px; background: var(--accent-2); color: #fff; border-radius: 6px; font-size: 13.5px; font-weight: 700; text-decoration: none; }
+.callbtn:hover { background: var(--accent); text-decoration: none; }
 .list { display: flex; flex-direction: column; gap: 6px; }
 .list .item { display: flex; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); flex-wrap: wrap; }
 .list .item .grow { flex: 1; min-width: 200px; }

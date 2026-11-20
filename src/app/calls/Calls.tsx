@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { campaignShortLabel } from '../../tracker/stages'
+import { PhoneStack } from '../_components/PhoneLink'
 
 interface CallEntry {
   id: number
@@ -41,7 +42,7 @@ export function Calls() {
             <tr key={c.id}>
               <td title={c.company_name}>{c.company_name}</td>
               <td title={c.contact_name}>{c.contact_name}</td>
-              <td>{c.phone || c.contact_phone}</td>
+              <td><PhoneStack phone={c.phone} contactPhone={c.contact_phone} /></td>
               <td>
                 {c.campaign_name} <span className="badge generic">{campaignShortLabel(c.campaign_type)}</span>
               </td>

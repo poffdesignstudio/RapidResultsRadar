@@ -4,6 +4,7 @@ import {
   CAMPAIGNS, CAMPAIGN_LABELS, OUTCOMES, campaignLabel, campaignShortLabel, isOutcome,
   nextStage, stageLabel, stagesForCampaign, type Campaign,
 } from '../../tracker/stages'
+import { PhoneStack, telHref } from '../_components/PhoneLink'
 
 interface CampaignT {
   id: number
@@ -94,6 +95,7 @@ const GROUPS: { title: string; fields: FieldSpec[] }[] = [
 ]
 
 const URL_FIELDS = new Set<LeadField>(['website', 'domain', 'facebook_url', 'contact_facebook_url', 'bbb_url', 'chamber_url'])
+const PHONE_FIELDS = new Set<LeadField>(['phone', 'contact_phone'])
 const WIDE_FIELDS = new Set<LeadField>(['notes', 'automated_flags'])
 
 const ALL_FIELDS: LeadField[] = GROUPS.flatMap((g) =>
@@ -281,6 +283,9 @@ export function Tracker() {
             {URL_FIELDS.has(k) && v.trim() !== '' && (
               <a href={asUrl(v.trim())} target="_blank" rel="noreferrer" title={`Open ${label}`}>↗</a>
             )}
+            {PHONE_FIELDS.has(k) && telHref(v) && (
+              <a className="callbtn" href={telHref(v) ?? undefined} title={`Tap to call ${v.trim()}`}>📞 Call</a>
+            )}
           </span>
         )}
       </label>
@@ -451,7 +456,7 @@ export function Tracker() {
                     <td title={l.contact_name}>{l.contact_name}</td>
                     <td>{l.personal_email ? <a href={`mailto:${l.personal_email}`}>{l.personal_email}</a> : ''}</td>
                     <td>{l.company_email}</td>
-                    <td>{l.phone || l.contact_phone}</td>
+                    <td><PhoneStack phone={l.phone} contactPhone={l.contact_phone} /></td>
                     <td>{l.city}</td>
                     <td>{l.state}</td>
                     <td><span className={`badge ${badgeClass(l.stage)}`}>{stageLabel(l.stage)}</span></td>

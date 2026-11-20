@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { COLUMNS } from '../../leads/columns'
+import { PhoneCell } from './PhoneLink'
 
 type Row = Record<string, string>
 
@@ -138,6 +139,7 @@ export function LeadsTable({ rows, onChange, onDeleteSelected }: {
     }
     if (c === 'website' && v) return <a href={/^https?:/i.test(v) ? v : `https://${v}`} target="_blank" rel="noreferrer">{v.replace(/^https?:\/\/(www\.)?/, '')}</a>
     if (c === 'contact_email' && v) return <a href={`mailto:${v}`}>{v}</a>
+    if ((c === 'phone' || c === 'contact_phone') && v) return <PhoneCell value={v} />
     if (['email_status', 'review_status', 'hiring_signal'].includes(c) && v) return <span className={`badge ${v}`}>{v}</span>
     return saving === key ? '…' : v
   }
